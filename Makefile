@@ -53,7 +53,7 @@ host-build: generate
 # inside the built image (frankenphp php-cli)
 bench: build
 	docker run --rm -v $(PWD)/bench:/bench -w /bench composer:2 sh -c "composer install --quiet"
-	docker run --rm -v $(PWD)/bench:/bench -w /bench php:8.4-cli ./run.sh 10000 100000
+	docker run --rm -v $(PWD)/bench:/bench -w /bench php:8.5-cli ./run.sh 10000 100000
 	docker run --rm -v $(PWD)/bench:/bench -v $(PWD)/php:/opt/easy-excel/php -w /bench \
 		-e EASY_EXCEL_PHP="frankenphp php-cli" $(IMAGE) \
 		sh -c 'frankenphp php-cli run.php easy-excel write 10000 && frankenphp php-cli run.php easy-excel write 100000'
