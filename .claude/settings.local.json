@@ -11,7 +11,8 @@
       "Bash(gofmt -l .)",
       "Bash(docker version *)",
       "Bash(docker buildx *)",
-      "Bash(docker build *)"
+      "Bash(docker build *)",
+      "Bash(docker run *)"
     ]
   }
 }

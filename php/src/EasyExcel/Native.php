@@ -161,10 +161,15 @@ final class Native
         self::check(\easy_excel_save_csv($handle, $path, $sheet, $delimiter, $crlf, $bom, $guardFormulas));
     }
 
+    // Success is null OR '': the generated bridge marshals Go's nil
+    // unsafe.Pointer for a ?string return as an empty PHP string, and error
+    // messages are never empty.
+
     private static function unwrap(array $result): mixed
     {
-        if (($result[1] ?? null) !== null) {
-            self::raise((string) $result[1]);
+        $error = $result[1] ?? null;
+        if ($error !== null && $error !== '') {
+            self::raise((string) $error);
         }
 
         return $result[0];
@@ -172,7 +177,7 @@ final class Native
 
     private static function check(?string $error): void
     {
-        if ($error !== null) {
+        if ($error !== null && $error !== '') {
             self::raise($error);
         }
     }

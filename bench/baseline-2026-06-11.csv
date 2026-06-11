@@ -1,0 +1,9 @@
+lib,workload,rows,wall_seconds,peak_mem_bytes,file_bytes
+phpspreadsheet,write,100000,16.155,665903104,6021804
+openspout,write,100000,3.551,4194304,5358070
+fast-excel-writer,write,100000,2.540,4194304,5368131
+rap2hpoutre,write,100000,3.838,4194304,5365103
+easy-excel,write,100000,0.815,4194304,5905155
+openspout,write,1000000,35.959,4194304,53663706
+fast-excel-writer,write,1000000,26.595,4194304,53261903
+easy-excel,write,1000000,7.355,4194304,58991281

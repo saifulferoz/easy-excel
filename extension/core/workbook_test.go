@@ -93,6 +93,11 @@ func TestStreamWriteSaveReload(t *testing.T) {
 	if v, err := r.GetCell("Worksheet", "A3", GetCalculated); err != nil || v != "29.97" {
 		t.Fatalf("calc A3 = %#v, %v", v, err)
 	}
+	// regression: excelize writes a degenerate <dimension ref="A1"/>;
+	// dimensions of a reloaded file must come from a lazy scan
+	if mr, mc, err := r.Dimensions("Worksheet"); err != nil || mr != 3 || mc != 3 {
+		t.Fatalf("reloaded dims = %d,%d, %v; want 3,3", mr, mc, err)
+	}
 }
 
 func TestOutOfOrderWriteDegradesOnce(t *testing.T) {

@@ -8,12 +8,19 @@
 //   - messages are prefixed "OVERLOADED:", "DENIED:" or "BADHANDLE:" so the
 //     PHP shim can raise typed exceptions (see EasyExcel\Native::raise()).
 //
-// Build (requires the frankenphp CLI and PHP ZTS dev headers, see README):
+// Build (Docker is the supported path, see Dockerfile / README):
 //
 //	GEN_STUB_SCRIPT=php-src/build/gen_stub.php frankenphp extension-init easy_excel.go
+//	  # generates easy_excel.c/.h, _arginfo.h, _generated.go in-place
 //	CGO_ENABLED=1 CGO_CFLAGS=$(php-config --includes) \
 //	  CGO_LDFLAGS="$(php-config --ldflags) $(php-config --libs)" \
-//	  xcaddy build --output frankenphp --with github.com/ronisaha/easy-excel/extension/build
+//	  xcaddy build --output frankenphp \
+//	  --with github.com/dunglas/frankenphp/caddy \
+//	  --with github.com/ronisaha/easy-excel/extension=$PWD
+//
+// Note: the generator requires each Go parameter declared separately
+// (no grouped `a, b int64`), and gofmt must not touch this file — it
+// mangles //export_php: directives.
 package easy_excel
 
 // #include <Zend/zend_types.h>
@@ -162,7 +169,7 @@ func easy_excel_delete_sheet(handle int64, name *C.zend_string) unsafe.Pointer {
 }
 
 //export_php:function easy_excel_rename_sheet(int $handle, string $old, string $new): ?string
-func easy_excel_rename_sheet(handle int64, oldName, newName *C.zend_string) unsafe.Pointer {
+func easy_excel_rename_sheet(handle int64, oldName *C.zend_string, newName *C.zend_string) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return errOnly(err)
@@ -185,7 +192,7 @@ func easy_excel_sheets(handle int64) unsafe.Pointer {
 }
 
 //export_php:function easy_excel_set_active_sheet(int $handle, int $index): ?string
-func easy_excel_set_active_sheet(handle, index int64) unsafe.Pointer {
+func easy_excel_set_active_sheet(handle int64, index int64) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return errOnly(err)
@@ -206,7 +213,7 @@ func easy_excel_active_sheet(handle int64) unsafe.Pointer {
 // --- write path -----------------------------------------------------------------
 
 //export_php:function easy_excel_write_rows(int $handle, string $sheet, int $startRow, int $startCol, array $rows): ?string
-func easy_excel_write_rows(handle int64, sheet *C.zend_string, startRow, startCol int64, rows *C.zend_array) unsafe.Pointer {
+func easy_excel_write_rows(handle int64, sheet *C.zend_string, startRow int64, startCol int64, rows *C.zend_array) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return errOnly(err)
@@ -235,7 +242,7 @@ func easy_excel_write_rows(handle int64, sheet *C.zend_string, startRow, startCo
 }
 
 //export_php:function easy_excel_set_cell(int $handle, string $sheet, string $cell, array $value): ?string
-func easy_excel_set_cell(handle int64, sheet, cell *C.zend_string, value *C.zend_array) unsafe.Pointer {
+func easy_excel_set_cell(handle int64, sheet *C.zend_string, cell *C.zend_string, value *C.zend_array) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return errOnly(err)
@@ -263,7 +270,7 @@ func easy_excel_set_cell(handle int64, sheet, cell *C.zend_string, value *C.zend
 // --- read path --------------------------------------------------------------------
 
 //export_php:function easy_excel_get_cell(int $handle, string $sheet, string $cell, int $mode): array
-func easy_excel_get_cell(handle int64, sheet, cell *C.zend_string, mode int64) unsafe.Pointer {
+func easy_excel_get_cell(handle int64, sheet *C.zend_string, cell *C.zend_string, mode int64) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return pair(nil, err)
@@ -273,7 +280,7 @@ func easy_excel_get_cell(handle int64, sheet, cell *C.zend_string, mode int64) u
 }
 
 //export_php:function easy_excel_read_rows(int $handle, string $sheet, int $startRow, int $maxRows, bool $raw): array
-func easy_excel_read_rows(handle int64, sheet *C.zend_string, startRow, maxRows int64, raw bool) unsafe.Pointer {
+func easy_excel_read_rows(handle int64, sheet *C.zend_string, startRow int64, maxRows int64, raw bool) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return pair(nil, err)
@@ -306,7 +313,7 @@ func easy_excel_dimensions(handle int64, sheet *C.zend_string) unsafe.Pointer {
 // --- styling / structure -------------------------------------------------------------
 
 //export_php:function easy_excel_set_number_format(int $handle, string $sheet, string $range, string $code): ?string
-func easy_excel_set_number_format(handle int64, sheet, ref, code *C.zend_string) unsafe.Pointer {
+func easy_excel_set_number_format(handle int64, sheet *C.zend_string, ref *C.zend_string, code *C.zend_string) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return errOnly(err)
@@ -315,7 +322,7 @@ func easy_excel_set_number_format(handle int64, sheet, ref, code *C.zend_string)
 }
 
 //export_php:function easy_excel_merge_cells(int $handle, string $sheet, string $range): ?string
-func easy_excel_merge_cells(handle int64, sheet, ref *C.zend_string) unsafe.Pointer {
+func easy_excel_merge_cells(handle int64, sheet *C.zend_string, ref *C.zend_string) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return errOnly(err)
@@ -335,7 +342,7 @@ func easy_excel_save_xlsx(handle int64, path *C.zend_string) unsafe.Pointer {
 }
 
 //export_php:function easy_excel_save_csv(int $handle, string $path, string $sheet, string $delimiter, bool $crlf, bool $bom, bool $guardFormulas): ?string
-func easy_excel_save_csv(handle int64, path, sheet, delimiter *C.zend_string, crlf, bom, guard bool) unsafe.Pointer {
+func easy_excel_save_csv(handle int64, path *C.zend_string, sheet *C.zend_string, delimiter *C.zend_string, crlf bool, bom bool, guard bool) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return errOnly(err)

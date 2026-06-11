@@ -14,6 +14,10 @@
         }
     },
     "config": {
-        "optimize-autoloader": true
+        "optimize-autoloader": true,
+        "platform-check": false,
+        "platform": {
+            "ext-gd": "8.4"
+        }
     }
 }

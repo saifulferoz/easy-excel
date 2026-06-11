@@ -104,8 +104,22 @@ Notes:
 - CI publishes `ghcr.io/<owner>/frankenphp-easy-excel` on main pushes and
   semver tags (see `.github/workflows/publish.yml`).
 
+## Measured performance
+
+Write N rows × 10 mixed columns, one process per run (Docker, PHP 8.4,
+Apple Silicon; `bench/results.csv`):
+
+| Library | 100k rows | 1M rows | Peak PHP memory |
+|---|---|---|---|
+| PhpSpreadsheet 5.8 | 16.16s | — | 665MB at 100k |
+| rap2hpoutre/fast-excel | 3.84s | — | 4MB |
+| OpenSpout 4.x | 3.55s | 35.96s | 4MB |
+| fast-excel-writer 6.x | 2.54s | 26.60s | 4MB |
+| **easy-excel** | **0.82s** | **7.36s** | **4MB** |
+
 ## Status
 
-Phase 1 (MVP) — see PLAN.md §13 for the roadmap and COMPAT.md for the
-precise API matrix. Benchmarks against PhpSpreadsheet, OpenSpout,
-fast-excel-writer and rap2hpoutre/fast-excel: `make bench`.
+Phase 1 (MVP) complete: all Go and PHP suites green, plus an end-to-end
+smoke test against the real extension inside the built image
+(`php/tests/smoke.php`). See PLAN.md §13 for the roadmap and COMPAT.md for
+the precise API matrix. Reproduce the numbers with `make bench`.

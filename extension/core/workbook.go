@@ -48,14 +48,15 @@ const (
 var errClosed = errors.New("easy-excel: workbook is closed")
 
 type sheetState struct {
-	sw       *excelize.StreamWriter // non-nil while streaming
-	eligible bool                   // may still enter/continue streaming
-	lastRow  int                    // highest row written through sw
-	maxRow   int                    // tracked dimensions (writes + opened file)
-	maxCol   int
-	iter     *excelize.Rows // cached forward read iterator
-	iterNext int            // 1-based row the iterator yields next
-	iterRaw  bool
+	sw        *excelize.StreamWriter // non-nil while streaming
+	eligible  bool                   // may still enter/continue streaming
+	lastRow   int                    // highest row written through sw
+	maxRow    int                    // tracked dimensions (writes + opened file)
+	maxCol    int
+	dimsKnown bool           // false until tracked dims are trustworthy (lazy scan)
+	iter      *excelize.Rows // cached forward read iterator
+	iterNext  int            // 1-based row the iterator yields next
+	iterRaw   bool
 }
 
 // Workbook wraps one excelize file plus per-sheet streaming state.
@@ -107,7 +108,7 @@ func New(env *Env) (*Workbook, error) {
 	}
 	w := &Workbook{
 		f:        f,
-		sheets:   map[string]*sheetState{"Worksheet": {eligible: true}},
+		sheets:   map[string]*sheetState{"Worksheet": {eligible: true, dimsKnown: true}},
 		gate:     env.gate(),
 		policy:   env.policy(),
 		estBytes: baseEstimate,
@@ -153,6 +154,13 @@ func Open(path string, env *Env) (*Workbook, error) {
 	for _, name := range f.GetSheetList() {
 		st := &sheetState{}
 		st.maxRow, st.maxCol = dimensionOf(f, name)
+		// excelize-written files often carry a degenerate <dimension
+		// ref="A1"/>; only trust non-trivial dimensions, otherwise scan
+		// lazily on first Dimensions() call
+		st.dimsKnown = st.maxRow > 1 || st.maxCol > 1
+		if !st.dimsKnown {
+			st.maxRow, st.maxCol = 0, 0
+		}
 		w.sheets[name] = st
 	}
 	return w, nil
@@ -196,7 +204,7 @@ func (w *Workbook) AddSheet(name string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	w.sheets[name] = &sheetState{eligible: !w.degraded}
+	w.sheets[name] = &sheetState{eligible: !w.degraded, dimsKnown: true}
 	return idx, nil
 }
 
@@ -619,6 +627,8 @@ func (w *Workbook) closeIter(st *sheetState) {
 }
 
 // Dimensions returns the highest used row and column (1-based; 0 when empty).
+// For loaded files without a trustworthy stored dimension the sheet is
+// scanned once and the result cached; writes keep it current afterwards.
 func (w *Workbook) Dimensions(sheet string) (maxRow, maxCol int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -629,7 +639,36 @@ func (w *Workbook) Dimensions(sheet string) (maxRow, maxCol int, err error) {
 	if err != nil {
 		return 0, 0, err
 	}
+	if !st.dimsKnown {
+		if err := w.scanDims(sheet, st); err != nil {
+			return 0, 0, err
+		}
+	}
 	return st.maxRow, st.maxCol, nil
+}
+
+func (w *Workbook) scanDims(sheet string, st *sheetState) error {
+	rows, err := w.f.Rows(sheet)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	row := 0
+	for rows.Next() {
+		row++
+		cols, err := rows.Columns(excelize.Options{RawCellValue: true})
+		if err != nil {
+			return err
+		}
+		if len(cols) > st.maxCol {
+			st.maxCol = len(cols)
+		}
+		if len(cols) > 0 {
+			st.maxRow = row
+		}
+	}
+	st.dimsKnown = true
+	return rows.Error()
 }
 
 // --- styling (Phase-1 subset) -----------------------------------------------

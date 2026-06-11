@@ -1,6 +1,12 @@
 # build artifacts
 /frankenphp
 extension/build/
+# generated in-place by `frankenphp extension-init`
+extension/easy_excel.c
+extension/easy_excel.h
+extension/easy_excel_arginfo.h
+extension/easy_excel_generated.go
+extension/easy_excel.stub.php
 
 # composer
 vendor/

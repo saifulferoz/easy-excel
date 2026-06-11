@@ -264,7 +264,24 @@ anyway), JIT-compiled formula engine.
 
 ---
 
-## 10. Expected performance vs. the field (estimates — to be re-measured in Phase 0 bench rig)
+## 10. Expected performance vs. the field
+
+> **Phase-0 measurements (2026-06-11, Docker on Apple Silicon, PHP 8.4,
+> write N rows × 10 mixed columns, single process):**
+>
+> | Library | 100k rows | 1M rows | Peak PHP memory |
+> |---|---|---|---|
+> | PhpSpreadsheet 5.8 | 16.16s | n/a (multi-GB) | 665MB at 100k |
+> | rap2hpoutre/fast-excel | 3.84s | — | 4MB |
+> | OpenSpout 4.x | 3.55s | 35.96s | 4MB |
+> | fast-excel-writer 6.x | 2.54s | 26.60s | 4MB |
+> | **easy-excel** | **0.82s** | **7.36s** | **4MB** |
+>
+> Measured: **3.6× fast-excel-writer, 4.9× OpenSpout, ~20× PhpSpreadsheet**
+> at OpenSpout-class constant memory — within the estimated bands below
+> (1M-row estimate was 8–20s; measured 7.4s). Raw CSV: `bench/results.csv`.
+
+### Original estimates (pre-implementation — kept for accountability)
 
 Reference workload: **write 1,000,000 rows × 10 mixed columns (string/int/float/date), save XLSX**, PHP 8.4 / FrankenPHP worker, M-class or modern x86 server.
 

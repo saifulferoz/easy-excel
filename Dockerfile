@@ -39,8 +39,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
  && git clone --depth=1 --branch=PHP-${PHP_VERSION} https://github.com/php/php-src /opt/php-src
 WORKDIR /go/src/easy-excel/extension
 COPY extension/ .
+# generates easy_excel.c/.h, easy_excel_arginfo.h, easy_excel_generated.go and
+# easy_excel.stub.php in-place next to the bridge source
 RUN GEN_STUB_SCRIPT=/opt/php-src/build/gen_stub.php frankenphp extension-init easy_excel.go \
- && ls -la build/
+ && test -f easy_excel_generated.go && test -f easy_excel_arginfo.h
 
 # --- full FrankenPHP build --------------------------------------------------------
 
@@ -49,12 +51,13 @@ COPY --from=caddy:builder /usr/bin/xcaddy /usr/bin/xcaddy
 ENV CGO_ENABLED=1 \
     XCADDY_SETCAP=1 \
     XCADDY_GO_BUILD_FLAGS="-ldflags='-w -s' -tags=nobadger,nomysql,nopgx"
-RUN CGO_CFLAGS="$(php-config --includes)" \
+# -D_GNU_SOURCE: zend_operators.h uses memrchr, hidden behind glibc's GNU extensions
+RUN CGO_CFLAGS="$(php-config --includes) -D_GNU_SOURCE" \
     CGO_LDFLAGS="$(php-config --ldflags) $(php-config --libs)" \
     xcaddy build \
       --output /usr/local/bin/frankenphp-easy-excel \
       --with github.com/dunglas/frankenphp/caddy \
-      --with github.com/ronisaha/easy-excel/extension/build=./build \
+      --with github.com/ronisaha/easy-excel/extension=/go/src/easy-excel/extension \
  && /usr/local/bin/frankenphp-easy-excel version
 
 # --- runtime ------------------------------------------------------------------------

@@ -36,8 +36,8 @@ jobs:
           cache-from: type=gha,scope=php-test-${{ matrix.php }}
           cache-to: type=gha,scope=php-test-${{ matrix.php }},mode=max
 
-  # Compile-verifies the bridge: extension-init generation + full xcaddy
-  # build against real PHP ZTS headers.
+  # Compile-verifies the bridge (extension-init + xcaddy against real PHP ZTS
+  # headers), then runs the end-to-end smoke test inside the built image.
   extension-build:
     runs-on: ubuntu-latest
     steps:
@@ -47,9 +47,15 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          target: build
+          target: runner
+          load: true
+          tags: frankenphp-easy-excel:ci
           cache-from: type=gha,scope=extension
           cache-to: type=gha,scope=extension,mode=max
+      - name: Smoke test (real extension, full stack)
+        run: |
+          docker run --rm -v "$PWD/php:/opt/easy-excel/php" frankenphp-easy-excel:ci \
+            frankenphp php-cli /opt/easy-excel/php/tests/smoke.php
 
   govulncheck:
     runs-on: ubuntu-latest
