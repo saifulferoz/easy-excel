@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:frankenphp.dev)",
+      "Bash(go doc *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(go mod *)",
+      "Bash(go build *)",
+      "Bash(gofmt -l .)"
+    ]
+  }
+}
