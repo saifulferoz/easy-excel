@@ -14,7 +14,8 @@
       "Bash(docker build *)",
       "Bash(docker run *)",
       "Bash(docker manifest *)",
-      "Bash(git ls-remote *)"
+      "Bash(git ls-remote *)",
+      "Bash(php php/tests/run.php)"
     ]
   }
 }

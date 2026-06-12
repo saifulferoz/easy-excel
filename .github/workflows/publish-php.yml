@@ -31,17 +31,17 @@ jobs:
         run: |
           git subtree split --prefix=php -b php-split
 
-      - name: Push to easy-excel-php
+      - name: Push to easy-excel-polyfill
         env:
           PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
         run: |
           git remote add target \
-            https://x-access-token:${PUSH_TOKEN}@github.com/xiidea/easy-excel-php.git
+            https://x-access-token:${PUSH_TOKEN}@github.com/xiidea/easy-excel-polyfill.git
 
           git push target php-split:main --force
 
   # Keeps versions in lockstep: a v* tag here lands as the same tag + release
-  # on xiidea/easy-excel-php (which is what Packagist versions from).
+  # on xiidea/easy-excel-polyfill (which is what Packagist versions from).
   release:
     if: github.event_name == 'create' && github.event.ref_type == 'tag' && startsWith(github.event.ref, 'v')
     runs-on: ubuntu-latest
@@ -64,14 +64,14 @@ jobs:
           SPLIT_SHA=$(git subtree split --prefix=php)
           echo "sha=$SPLIT_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Push matching branch and tag to easy-excel-php
+      - name: Push matching branch and tag to easy-excel-polyfill
         env:
           PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
           TAG: ${{ github.event.ref }}
           SPLIT_SHA: ${{ steps.split.outputs.sha }}
         run: |
           git remote add target \
-            https://x-access-token:${PUSH_TOKEN}@github.com/xiidea/easy-excel-php.git
+            https://x-access-token:${PUSH_TOKEN}@github.com/xiidea/easy-excel-polyfill.git
 
           # the tagged commit is on main, so this is the same history the
           # split job publishes — update main first, then pin the tag
@@ -79,7 +79,7 @@ jobs:
           git tag -f "$TAG" "$SPLIT_SHA"
           git push target "refs/tags/$TAG" --force
 
-      - name: Create release on easy-excel-php
+      - name: Create release on easy-excel-polyfill
         env:
           PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
           TAG: ${{ github.event.ref }}
@@ -88,7 +88,7 @@ jobs:
             -X POST \
             -H "Authorization: Bearer ${PUSH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/xiidea/easy-excel-php/releases \
+            https://api.github.com/repos/xiidea/easy-excel-polyfill/releases \
             -d "{
               \"tag_name\": \"${TAG}\",
               \"name\": \"${TAG}\",
