@@ -34,7 +34,8 @@ RUN php php/tests/run.php
 
 FROM dunglas/frankenphp:builder-php${PHP_VERSION} AS generate
 ARG PHP_VERSION
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+# libbrotli-dev: the caddy-cbrotli module (br encoder in the stock Caddyfile)
+RUN apt-get update && apt-get install -y --no-install-recommends git libbrotli-dev \
  && rm -rf /var/lib/apt/lists/* \
  && git clone --depth=1 --branch=PHP-${PHP_VERSION} https://github.com/php/php-src /opt/php-src
 WORKDIR /go/src/easy-excel/extension
@@ -52,11 +53,15 @@ ENV CGO_ENABLED=1 \
     XCADDY_SETCAP=1 \
     XCADDY_GO_BUILD_FLAGS="-ldflags='-w -s' -tags=nobadger,nomysql,nopgx"
 # -D_GNU_SOURCE: zend_operators.h uses memrchr, hidden behind glibc's GNU extensions
+# cbrotli: module parity with the official frankenphp binary —
+# the runtime image's stock Caddyfile uses the br encoder, so without cbrotli
+# the server refuses to start
 RUN CGO_CFLAGS="$(php-config --includes) -D_GNU_SOURCE" \
     CGO_LDFLAGS="$(php-config --ldflags) $(php-config --libs)" \
     xcaddy build \
       --output /usr/local/bin/frankenphp-easy-excel \
       --with github.com/dunglas/frankenphp/caddy \
+      --with github.com/dunglas/caddy-cbrotli \
       --with github.com/xiidea/easy-excel/extension=/go/src/easy-excel/extension \
  && /usr/local/bin/frankenphp-easy-excel version
 

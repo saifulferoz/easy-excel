@@ -56,6 +56,19 @@ jobs:
         run: |
           docker run --rm -v "$PWD/php:/opt/easy-excel/php" frankenphp-easy-excel:ci \
             frankenphp php-cli /opt/easy-excel/php/tests/smoke.php
+      # the stock Caddyfile must boot (catches missing Caddy modules like the
+      # br encoder, which php-cli runs never exercise)
+      - name: Server boot test (stock Caddyfile)
+        run: |
+          docker run -d --name boot -e SERVER_NAME=":80" -p 8080:80 frankenphp-easy-excel:ci
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080 || true)
+            [ -n "$code" ] && [ "$code" != "000" ] && break
+            sleep 1
+          done
+          docker logs boot
+          [ "$code" != "000" ] && [ -n "$code" ] || { echo "server never answered"; exit 1; }
+          docker rm -f boot
 
   govulncheck:
     runs-on: ubuntu-latest
