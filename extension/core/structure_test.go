@@ -9,7 +9,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"github.com/ronisaha/easy-excel/extension/compat"
+	"github.com/xiidea/easy-excel/extension/compat"
 )
 
 func fillRows(t *testing.T, w *Workbook, sheet string, from, to int) {

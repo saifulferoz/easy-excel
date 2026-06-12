@@ -43,7 +43,7 @@ final class Native
         if (!self::available()) {
             throw new EasyExcelException(
                 'The easy_excel extension is not loaded. Build FrankenPHP with '
-                . '--with github.com/ronisaha/easy-excel/extension/build (see README).'
+                . '--with github.com/xiidea/easy-excel/extension/build (see README).'
             );
         }
     }

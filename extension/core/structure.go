@@ -7,7 +7,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"github.com/ronisaha/easy-excel/extension/compat"
+	"github.com/xiidea/easy-excel/extension/compat"
 )
 
 // Phase-2 structure & styling (PLAN.md §5). Ops are recorded in per-sheet

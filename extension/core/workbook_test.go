@@ -9,8 +9,8 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"github.com/ronisaha/easy-excel/extension/compat"
-	"github.com/ronisaha/easy-excel/extension/limits"
+	"github.com/xiidea/easy-excel/extension/compat"
+	"github.com/xiidea/easy-excel/extension/limits"
 )
 
 func testEnv() *Env {

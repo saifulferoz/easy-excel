@@ -16,7 +16,7 @@
 //	  CGO_LDFLAGS="$(php-config --ldflags) $(php-config --libs)" \
 //	  xcaddy build --output frankenphp \
 //	  --with github.com/dunglas/frankenphp/caddy \
-//	  --with github.com/ronisaha/easy-excel/extension=$PWD
+//	  --with github.com/xiidea/easy-excel/extension=$PWD
 //
 // Note: the generator requires each Go parameter declared separately
 // (no grouped `a, b int64`), and gofmt must not touch this file — it
@@ -34,11 +34,11 @@ import (
 
 	"github.com/dunglas/frankenphp"
 
-	"github.com/ronisaha/easy-excel/extension/compat"
-	"github.com/ronisaha/easy-excel/extension/core"
-	"github.com/ronisaha/easy-excel/extension/exio"
-	"github.com/ronisaha/easy-excel/extension/limits"
-	"github.com/ronisaha/easy-excel/extension/registry"
+	"github.com/xiidea/easy-excel/extension/compat"
+	"github.com/xiidea/easy-excel/extension/core"
+	"github.com/xiidea/easy-excel/extension/exio"
+	"github.com/xiidea/easy-excel/extension/limits"
+	"github.com/xiidea/easy-excel/extension/registry"
 )
 
 const version = "0.1.0"

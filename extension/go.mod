@@ -1,4 +1,4 @@
-module github.com/ronisaha/easy-excel/extension
+module github.com/xiidea/easy-excel/extension
 
 go 1.26.2
 

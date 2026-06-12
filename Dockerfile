@@ -57,7 +57,7 @@ RUN CGO_CFLAGS="$(php-config --includes) -D_GNU_SOURCE" \
     xcaddy build \
       --output /usr/local/bin/frankenphp-easy-excel \
       --with github.com/dunglas/frankenphp/caddy \
-      --with github.com/ronisaha/easy-excel/extension=/go/src/easy-excel/extension \
+      --with github.com/xiidea/easy-excel/extension=/go/src/easy-excel/extension \
  && /usr/local/bin/frankenphp-easy-excel version
 
 # --- runtime ------------------------------------------------------------------------

@@ -47,7 +47,7 @@ host-build: generate
 		CGO_LDFLAGS="$$(php-config --ldflags) $$(php-config --libs)" \
 		xcaddy build --output ../frankenphp \
 		--with github.com/dunglas/frankenphp/caddy \
-		--with github.com/ronisaha/easy-excel/extension=$$(pwd)
+		--with github.com/xiidea/easy-excel/extension=$$(pwd)
 
 # competitor baselines run in a plain PHP container; the easy-excel lane runs
 # inside the built image (frankenphp php-cli)

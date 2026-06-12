@@ -13,7 +13,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"github.com/ronisaha/easy-excel/extension/compat"
+	"github.com/xiidea/easy-excel/extension/compat"
 )
 
 // Phase-3 ops (PLAN.md §5/§13). All of these live in worksheet XML parts

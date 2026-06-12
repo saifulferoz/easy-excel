@@ -23,9 +23,9 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"github.com/ronisaha/easy-excel/extension/compat"
-	"github.com/ronisaha/easy-excel/extension/exio"
-	"github.com/ronisaha/easy-excel/extension/limits"
+	"github.com/xiidea/easy-excel/extension/compat"
+	"github.com/xiidea/easy-excel/extension/exio"
+	"github.com/xiidea/easy-excel/extension/limits"
 )
 
 // GetMode selects what GetCell returns, mirroring PhpSpreadsheet's

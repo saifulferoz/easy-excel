@@ -5,7 +5,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"github.com/ronisaha/easy-excel/extension/compat"
+	"github.com/xiidea/easy-excel/extension/compat"
 )
 
 // styleInterner memoizes excelize style IDs per canonical style spec
