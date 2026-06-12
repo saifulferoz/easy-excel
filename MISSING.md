@@ -6,6 +6,11 @@ COMPAT.md documents what *is* supported and where supported behavior
 intentionally diverges. Calling anything below fails loudly (class not
 found / clear exception) — never with a silently different file.
 
+**An implementation plan for closing these gaps exists**: PLAN.md §13
+"Phase 4 — compat completion" orders everything below into four ROI waves
+with verified excelize APIs and effort estimates. Items land there and get
+deleted here.
+
 ## Found by the ERP report probe (`data/public/index.php`)
 
 | API | Status / workaround |
@@ -49,7 +54,8 @@ found / clear exception) — never with a silently different file.
   `phpoffice/phpspreadsheet` alongside (the alias bootstrap stays dormant
   and defers to it) or convert externally
 - Workbook encryption / password-protected open (sheet protection **is**
-  supported)
+  supported; full encryption is feasible — excelize supports both directions
+  — and is planned in Phase 4.1)
 - 63 of PhpSpreadsheet's 529 calculation functions (list in FORMULAS.md)
 
 **Misc**

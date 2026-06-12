@@ -406,6 +406,60 @@ what/why/impact note per significant change (response time, throughput, memory, 
 >   worker + queue patterns cover the rest). Workbook encryption out of
 >   scope.
 
+### Phase 4 — compat completion (planned)
+
+Closes MISSING.md, ordered by ROI (probe-driven gaps first, structure
+editing last). Every excelize API named below was verified to exist in
+v2.10. Effort: S ≈ hours, M ≈ a day, L ≈ days. Each wave exits with: new
+checks in the HTTP report probe + Go/PHP tests, COMPAT.md rows, and the
+corresponding MISSING.md entries deleted.
+
+**Wave 4.1 — probe-driven quick wins (mostly PHP-side, no degrade impact)**
+
+| Item | Approach | Effort |
+|---|---|---|
+| Custom value binders (`Cell::setValueBinder`, `DefaultValueBinder`, `IValueBinder`) | Pure PHP: run the binder in `Worksheet::bindValue()` before buffering; binder receives the coordinate-facade `Cell` and calls `setValueExplicit` back through the buffer. No CGO involvement, hot path untouched when no binder set | M |
+| Document properties (`getProperties()`) | Bridge `easy_excel_doc_props(json)` → `f.SetDocProps`; PHP `Properties` accumulator | S |
+| Print titles + print area (`setRowsToRepeatAtTop*`, `setPrintArea`) | PHP-only: reserved defined names `_xlnm.Print_Titles` / `_xlnm.Print_Area` through the existing `definedName` ABI (sheet-scoped) | S |
+| `getConditionalStyles()` getter | PHP-only: per-range registry of rules set this session (write-session state; loaded files excluded, documented) | S |
+| **Workbook encryption** (write password + password-protected open) | excelize supports both (`Options{Password}` on open, `SaveAs` password). Writer option + `IOFactory::load` arg + new open ABI param. *Corrects MISSING.md — this was wrongly listed as out of scope* | S |
+| Gradient fills, diagonal borders | extend `compat.TranslateStyle` (excelize `Fill{Type:"gradient", Shading}`, `Border{Type:"diagonalUp/Down"}` + the diagonal flags) | S |
+| `unmergeCells` + merge getter | `f.UnmergeCell` / `f.GetMergeCells` passthroughs | S |
+| Calculation-control no-ops (`disableCalculationCache` etc.) | accept-and-ignore: perf hints that cannot change output; documented in COMPAT.md | S |
+
+**Wave 4.2 — reading & iteration**
+
+| Item | Approach | Effort |
+|---|---|---|
+| `getRowIterator` / `getColumnIterator` / `Row::getCellIterator` | PHP-only lazy iterators over the existing 1k-row chunked `read_rows` (the chunk cache already exists) | M |
+| `Reader\IReadFilter` | apply the PHP callback per cell during chunk assembly in `collectRows` (filter pushdown unnecessary — reads already stream) | S |
+| Style read-back (`getStyle()` reflecting loaded files) + `duplicateStyle` | bridge `easy_excel_get_style(cell)` returning a JSON spec (reverse of `TranslateStyle`); Style getters consult it when no local state; `duplicateStyle` = read spec → apply to range | M-L |
+| Getters: validations, conditionals, auto-filter, defined names | `f.GetDataValidations` / `GetConditionalFormats` / `GetDefinedName` passthroughs (auto-filter from the workbook-side filter map) | S |
+| `getDefaultStyle()` | workbook-level default spec prepended to every sheet's style log as a full-range entry (folds under everything) + `SetColStyle` catch-all for untouched cells | M |
+
+**Wave 4.3 — structure editing**
+
+| Item | Approach | Effort |
+|---|---|---|
+| `insertNewRowBefore` / `removeRow` / `insertNewColumnBefore` / `removeColumn` | `f.InsertRows/RemoveRow/InsertCols/RemoveCol` (random-access ops → same degrade semantics as reads). Risk flag: must replay the op-log **before** shifting so queued coordinates stay valid — covered because these ops call `ensureRandom` first | M |
+| Sheet copy / `createSheet($index)` | `f.CopySheet` + `f.MoveSheet` | M |
+| Sheet views: gridlines, zoom, RTL, tab color | `f.SetSheetView` / `SetSheetProps` as pending ops | S-M |
+| Headers/footers + page margins | `f.SetHeaderFooter` / `SetPageMargins` as pending ops; PhpSpreadsheet code placeholders (`&P`, `&D`…) map 1:1 | M |
+
+**Wave 4.4 — content types**
+
+| Item | Approach | Effort |
+|---|---|---|
+| `RichText` cell values (+ comment run fonts) | `f.SetCellRichText` as a pending op; extend the existing RichText/Run classes with font specs reusing `compat.TranslateStyle`'s font section | M |
+| `MemoryDrawing` (GD images) | render to PNG bytes in PHP, `f.AddPictureFromBytes` (base64 over the ABI) | M |
+| PhpSpreadsheet `Chart\*` facade | map `Chart`/`DataSeries`/`DataSeriesValues`/`PlotArea`/`Legend`/`Title` onto the existing native chart spec (series refs are already formula strings); bar/line/pie/scatter/area first | L |
+| Auto-filter column rules | map `AutoFilter\Column` rules onto `excelize.AutoFilterOptions` | M |
+
+**Stays out (unchanged rationale):** Ods/Xls/Html/Pdf readers/writers
+(excelize cannot; the alias bootstrap already defers to real PhpSpreadsheet
+when installed), the 63 missing formula functions (upstream excelize work —
+track there), PHP callbacks inside per-cell hot paths.
+
 ---
 
 ## 14. Open questions for approval
