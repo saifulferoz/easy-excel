@@ -88,7 +88,9 @@ Reading works the same way (`IOFactory::load`, `toArray`, `rangeToArray`,
 PhpSpreadsheet functions, [coverage table](https://github.com/xiidea/easy-excel/blob/main/FORMULAS.md)).
 
 You can also use the `EasyExcel\Compat\*` classes directly, or the flat
-`EasyExcel\Native` ABI wrapper for maximum throughput.
+`EasyExcel\Native` ABI wrapper for maximum throughput. The raw extension
+functions work without this package at all — reference:
+[NATIVE.md](https://github.com/xiidea/easy-excel/blob/main/NATIVE.md).
 
 ## What's covered
 

@@ -7,7 +7,9 @@ generation, ZIP compression, parsing, formulas) in compiled Go via
 
 Target: PhpSpreadsheet's ergonomics at OpenSpout-class (constant) memory and a
 multiple of both libraries' throughput. Design rationale, bottleneck analysis and
-measured claims live in [PLAN.md](PLAN.md); API coverage in [COMPAT.md](COMPAT.md).
+measured claims live in [PLAN.md](PLAN.md); API coverage in [COMPAT.md](COMPAT.md);
+formula coverage in [FORMULAS.md](FORMULAS.md); the raw extension API (no
+composer package needed) in [NATIVE.md](NATIVE.md).
 
 ## How it works
 
@@ -67,6 +69,9 @@ $spreadsheet->disconnectWorksheets();               // frees the native workbook
 
 The aliases stay dormant when the real `phpoffice/phpspreadsheet` is installed
 or the extension is missing, so adoption can be incremental.
+
+The shim is optional: the extension's flat `easy_excel_*()` ABI is usable
+straight from PHP with no composer dependency — see [NATIVE.md](NATIVE.md).
 
 ## Configuration
 
