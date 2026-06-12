@@ -7,9 +7,13 @@ on:
     paths:
       - 'php/**'
       - '.github/workflows/publish-php.yml'
+  # tag creation (v*) mirrors the tag + a release to the PHP repo; a separate
+  # event because `paths` filters do not apply cleanly to tag pushes
+  create:
 
 jobs:
   split:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
 
     steps:
@@ -35,3 +39,67 @@ jobs:
             https://x-access-token:${PUSH_TOKEN}@github.com/xiidea/easy-excel-php.git
 
           git push target php-split:main --force
+
+  # Keeps versions in lockstep: a v* tag here lands as the same tag + release
+  # on xiidea/easy-excel-php (which is what Packagist versions from).
+  release:
+    if: github.event_name == 'create' && github.event.ref_type == 'tag' && startsWith(github.event.ref, 'v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source repository at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.ref }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Split php subtree at the tagged commit
+        id: split
+        run: |
+          SPLIT_SHA=$(git subtree split --prefix=php)
+          echo "sha=$SPLIT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Push matching branch and tag to easy-excel-php
+        env:
+          PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
+          TAG: ${{ github.event.ref }}
+          SPLIT_SHA: ${{ steps.split.outputs.sha }}
+        run: |
+          git remote add target \
+            https://x-access-token:${PUSH_TOKEN}@github.com/xiidea/easy-excel-php.git
+
+          # the tagged commit is on main, so this is the same history the
+          # split job publishes — update main first, then pin the tag
+          git push target "$SPLIT_SHA":refs/heads/main --force
+          git tag -f "$TAG" "$SPLIT_SHA"
+          git push target "refs/tags/$TAG" --force
+
+      - name: Create release on easy-excel-php
+        env:
+          PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
+          TAG: ${{ github.event.ref }}
+        run: |
+          status=$(curl -s -o /tmp/release.json -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${PUSH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/xiidea/easy-excel-php/releases \
+            -d "{
+              \"tag_name\": \"${TAG}\",
+              \"name\": \"${TAG}\",
+              \"body\": \"PhpSpreadsheet-compatible shim for the easy-excel FrankenPHP extension.\\n\\nMatches [xiidea/easy-excel ${TAG}](https://github.com/xiidea/easy-excel/releases/tag/${TAG}); run it on the \`ghcr.io/xiidea/frankenphp8.5-easy-excel:${TAG#v}\` image.\"
+            }")
+          if [ "$status" = "201" ]; then
+            echo "release ${TAG} created"
+          elif [ "$status" = "422" ] && grep -q already_exists /tmp/release.json; then
+            echo "release ${TAG} already exists, skipping"
+          else
+            echo "release creation failed with HTTP $status"
+            cat /tmp/release.json
+            exit 1
+          fi
