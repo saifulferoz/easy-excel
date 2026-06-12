@@ -9,7 +9,7 @@ jobs:
   go-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
       - name: Go unit tests (race detector)
         uses: docker/build-push-action@v6
@@ -25,7 +25,7 @@ jobs:
       matrix:
         php: ["8.4", "8.5"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
       - name: PHP shim tests (fake ABI)
         uses: docker/build-push-action@v6
@@ -41,7 +41,7 @@ jobs:
   extension-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
       - name: Build FrankenPHP with easy-excel
         uses: docker/build-push-action@v6
@@ -60,8 +60,8 @@ jobs:
   govulncheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
           cache-dependency-path: extension/go.sum

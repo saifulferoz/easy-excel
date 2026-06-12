@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout source repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           # keep the workflow's GITHUB_TOKEN out of .git/config: its
@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - name: Checkout source repository at tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.ref }}
           fetch-depth: 0
