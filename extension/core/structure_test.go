@@ -426,6 +426,123 @@ func TestBroadLateStyleKeepsNarrowEarlierStyles(t *testing.T) {
 	}
 }
 
+func TestNestedRectLayeringSurvivesBroadStyle(t *testing.T) {
+	// the title-block pattern: bold A1:C2 ⊂ fill A1:C3 ⊂ broad vcenter A1:C10
+	// applied after rows streamed — the nested intersections must be applied
+	// smallest-last so A1 keeps bold + fill + alignment
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	path := filepath.Join(t.TempDir(), "nested.xlsx")
+
+	fillRows(t, w, "Worksheet", 1, 10)
+	if err := w.ApplyStyle("Worksheet", "A1:C2", `{"font":{"bold":true},"alignment":{"horizontal":"center"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.ApplyStyle("Worksheet", "A1:C3", `{"fill":{"fillType":"solid","startColor":{"rgb":"F9F9F9"}}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.ApplyStyle("Worksheet", "A1:C10", `{"alignment":{"vertical":"center"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(path); err != nil {
+		t.Fatal(err)
+	}
+	f := reopen(t, path)
+	s := cellStyle(t, f, "Worksheet", "A1")
+	if s.Font == nil || !s.Font.Bold {
+		t.Errorf("A1 lost bold: %+v", s.Font)
+	}
+	if s.Alignment == nil || s.Alignment.Horizontal != "center" || s.Alignment.Vertical != "center" {
+		t.Errorf("A1 alignment wrong: %+v", s.Alignment)
+	}
+	if s.Fill.Pattern != 1 {
+		t.Errorf("A1 lost fill: %+v", s.Fill)
+	}
+	if s = cellStyle(t, f, "Worksheet", "A3"); (s.Font != nil && s.Font.Bold) || s.Fill.Pattern != 1 {
+		t.Errorf("A3 should have fill but not bold: font=%+v fill=%+v", s.Font, s.Fill)
+	}
+	if s = cellStyle(t, f, "Worksheet", "A5"); s.Fill.Pattern == 1 ||
+		s.Alignment == nil || s.Alignment.Vertical != "center" {
+		t.Errorf("A5 should have only the broad alignment: fill=%+v align=%+v", s.Fill, s.Alignment)
+	}
+}
+
+func TestCrossOverlapLayering(t *testing.T) {
+	// the subtotal pattern: a column number format crosses a bolded total
+	// row; their intersection must carry both, plus the broad alignment
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	path := filepath.Join(t.TempDir(), "cross.xlsx")
+
+	fillRows(t, w, "Worksheet", 1, 15)
+	if err := w.ApplyStyle("Worksheet", "A13:G13", `{"font":{"bold":true}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.ApplyStyle("Worksheet", "C8:C15", `{"numberFormat":{"formatCode":"#,##0.00"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.ApplyStyle("Worksheet", "A1:G15", `{"alignment":{"vertical":"center"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(path); err != nil {
+		t.Fatal(err)
+	}
+	f := reopen(t, path)
+	if v, _ := f.GetCellValue("Worksheet", "C13"); v != "1.50" {
+		t.Errorf("C13 formatted = %q: cross overlap lost the number format", v)
+	}
+	s := cellStyle(t, f, "Worksheet", "C13")
+	if s.Font == nil || !s.Font.Bold {
+		t.Errorf("C13 lost bold: %+v", s.Font)
+	}
+	if s.Alignment == nil || s.Alignment.Vertical != "center" {
+		t.Errorf("C13 lost alignment: %+v", s.Alignment)
+	}
+	if v, _ := f.GetCellValue("Worksheet", "C9"); v != "1.50" {
+		t.Errorf("C9 formatted = %q", v)
+	}
+	if s = cellStyle(t, f, "Worksheet", "C9"); s.Font != nil && s.Font.Bold {
+		t.Error("C9 should not be bold")
+	}
+}
+
+func TestAutoSizeSkipsMergedCells(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	path := filepath.Join(t.TempDir(), "autosize.xlsx")
+
+	if err := w.MergeCells("Worksheet", "A1:C1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WriteRows("Worksheet", 1, 1, [][]compat.Cell{
+		mustCells(t, "a very long merged title that must not stretch column A"),
+		mustCells(t, "abc"),
+		mustCells(t, "abcdef"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SetColAutoSize("Worksheet", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(path); err != nil {
+		t.Fatal(err)
+	}
+	f := reopen(t, path)
+	// widest non-merged value is "abcdef" (6 runes) → width 8
+	if width, _ := f.GetColWidth("Worksheet", "A"); width != 8 {
+		t.Errorf("col A width = %v, want 8 (merged title must be skipped)", width)
+	}
+}
+
 func TestFormattedReadSeesQueuedStyles(t *testing.T) {
 	w, err := New(testEnv())
 	if err != nil {

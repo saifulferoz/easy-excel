@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -548,12 +549,127 @@ func (w *Workbook) replaySheet(sheet string, st *sheetState) error {
 // formats followed by a sheet-wide alignment) — the intersections with every
 // earlier overlapping entry are re-applied with their own fold, restoring
 // PhpSpreadsheet's per-cell layering for the overlap regions.
+// exactStyleAreaLimit bounds the per-cell layering pass; bigger regions fall
+// back to rect-based application (approximate for cross overlaps).
+const exactStyleAreaLimit = 1 << 16
+
 func (w *Workbook) applyStyleEntry(sheet string, st *sheetState, idx int) error {
 	e := &st.styleLog[idx]
 	e.done = true
-	if err := w.applyFoldedRect(sheet, st, idx, e.r1, e.c1, e.r2, e.c2); err != nil {
+	r1, c1, r2, c2 := e.r1, e.c1, e.r2, e.c2
+	bound := r2
+	if bound == 0 {
+		// column default for rows written later; existing cells get the
+		// exact pass below
+		if err := w.applyFoldedRect(sheet, st, idx, r1, c1, 0, c2); err != nil {
+			return err
+		}
+		bound = st.maxRow
+		if bound < r1 {
+			return nil
+		}
+	}
+	if idx < 64 && (bound-r1+1)*(c2-c1+1) <= exactStyleAreaLimit {
+		return w.applyStyleExact(sheet, st, idx, r1, c1, bound, c2)
+	}
+	return w.applyStyleRects(sheet, st, idx)
+}
+
+// applyStyleExact reproduces PhpSpreadsheet's per-cell layering for the rect:
+// each cell's style is the fold of every entry up to idx containing it.
+// Cells sharing an entry set are grouped into rectangular runs (consecutive
+// identical rows × consecutive identical column masks), so the excelize call
+// count stays proportional to the style structure, not the cell count.
+func (w *Workbook) applyStyleExact(sheet string, st *sheetState, idx, r1, c1, r2, c2 int) error {
+	width := c2 - c1 + 1
+	rowMask := func(row int, out []uint64) {
+		for i := range out {
+			out[i] = 0
+		}
+		for j := 0; j <= idx; j++ {
+			p := &st.styleLog[j]
+			if p.r1 > row || (p.r2 != 0 && p.r2 < row) {
+				continue
+			}
+			lo, hi := max(p.c1, c1), min(p.c2, c2)
+			for c := lo; c <= hi; c++ {
+				out[c-c1] |= 1 << uint(j)
+			}
+		}
+	}
+	cur := make([]uint64, width)
+	prev := make([]uint64, width)
+	groupStart := r1
+	flush := func(rowEnd int, pattern []uint64) error {
+		for s := 0; s < width; {
+			m := pattern[s]
+			t := s
+			for t+1 < width && pattern[t+1] == m {
+				t++
+			}
+			if m != 0 {
+				if err := w.applyMaskRect(sheet, st, m, groupStart, c1+s, rowEnd, c1+t); err != nil {
+					return err
+				}
+			}
+			s = t + 1
+		}
+		return nil
+	}
+	for row := r1; row <= r2; row++ {
+		rowMask(row, cur)
+		if row > r1 && !slicesEqual(cur, prev) {
+			if err := flush(row-1, prev); err != nil {
+				return err
+			}
+			groupStart = row
+		}
+		copy(prev, cur)
+	}
+	return flush(r2, prev)
+}
+
+func slicesEqual(a, b []uint64) bool {
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (w *Workbook) applyMaskRect(sheet string, st *sheetState, mask uint64, r1, c1, r2, c2 int) error {
+	merged := compat.StyleSpec{}
+	for j := 0; j < 64; j++ {
+		if mask&(1<<uint(j)) != 0 {
+			merged = compat.MergeSpec(merged, st.styleLog[j].spec)
+		}
+	}
+	id, err := w.styles.specID(w.f, merged)
+	if err != nil {
 		return err
 	}
+	tl, err := excelize.CoordinatesToCellName(c1, r1)
+	if err != nil {
+		return err
+	}
+	br, err := excelize.CoordinatesToCellName(c2, r2)
+	if err != nil {
+		return err
+	}
+	return w.f.SetCellStyle(sheet, tl, br, id)
+}
+
+// applyStyleRects is the fallback for huge or >64-entry logs: the entry's
+// rect plus its pairwise intersections with earlier overlapping entries,
+// applied largest-first so nested intersections win. Cross overlaps between
+// intersections remain approximate (COMPAT.md §12).
+func (w *Workbook) applyStyleRects(sheet string, st *sheetState, idx int) error {
+	e := &st.styleLog[idx]
+	type rect struct{ r1, c1, r2, c2 int }
+	seen := map[rect]bool{}
+	rects := []rect{{e.r1, e.c1, e.r2, e.c2}}
+	seen[rects[0]] = true
 	for j := 0; j < idx; j++ {
 		p := &st.styleLog[j]
 		if p.containsRect(e.r1, e.c1, e.r2, e.c2) {
@@ -563,7 +679,20 @@ func (w *Workbook) applyStyleEntry(sheet string, st *sheetState, idx int) error 
 		if !ok {
 			continue
 		}
-		if err := w.applyFoldedRect(sheet, st, idx, r1, c1, r2, c2); err != nil {
+		if r := (rect{r1, c1, r2, c2}); !seen[r] {
+			seen[r] = true
+			rects = append(rects, r)
+		}
+	}
+	area := func(r rect) int {
+		if r.r2 == 0 {
+			return int(^uint(0) >> 1)
+		}
+		return (r.r2 - r.r1 + 1) * (r.c2 - r.c1 + 1)
+	}
+	sort.SliceStable(rects, func(a, b int) bool { return area(rects[a]) > area(rects[b]) })
+	for _, r := range rects {
+		if err := w.applyFoldedRect(sheet, st, idx, r.r1, r.c1, r.r2, r.c2); err != nil {
 			return err
 		}
 	}
@@ -688,19 +817,47 @@ func (w *Workbook) applyOp(sheet string, op pendingOp) error {
 
 // autoSizeCols approximates PhpSpreadsheet's auto-size: widest formatted
 // value per column (in characters) plus padding, capped at Excel's maximum.
+// Cells inside merged ranges are skipped, like PhpSpreadsheet — a merged
+// title spanning the column must not stretch it.
 func (w *Workbook) autoSizeCols(sheet string, c1, c2 int) error {
+	merged, err := w.f.GetMergeCells(sheet)
+	if err != nil {
+		return err
+	}
+	type rect struct{ r1, c1, r2, c2 int }
+	var merges []rect
+	for _, m := range merged {
+		mc1, mr1, err1 := excelize.CellNameToCoordinates(m.GetStartAxis())
+		mc2, mr2, err2 := excelize.CellNameToCoordinates(m.GetEndAxis())
+		if err1 == nil && err2 == nil {
+			merges = append(merges, rect{mr1, mc1, mr2, mc2})
+		}
+	}
+	inMerge := func(row, col int) bool {
+		for _, m := range merges {
+			if m.r1 <= row && row <= m.r2 && m.c1 <= col && col <= m.c2 {
+				return true
+			}
+		}
+		return false
+	}
 	rows, err := w.f.Rows(sheet)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	widest := make([]int, c2-c1+1)
+	rowNum := 0
 	for rows.Next() {
+		rowNum++
 		cols, err := rows.Columns()
 		if err != nil {
 			return err
 		}
 		for c := c1; c <= c2 && c <= len(cols); c++ {
+			if inMerge(rowNum, c) {
+				continue
+			}
 			if n := utf8.RuneCountInString(cols[c-1]); n > widest[c-c1] {
 				widest[c-c1] = n
 			}
