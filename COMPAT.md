@@ -46,6 +46,19 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Charts | **native API only**: `Worksheet::addNativeChart($cell, $spec)` / `Native::addChart` with a declarative spec (type, series, title, legend, size); types: area/bar/barStacked/col/colStacked/doughnut/line/pie/radar/scatter | PhpSpreadsheet's `Chart` object model is **not** mapped — see "Not yet supported" |
 | Auto-filter | `setAutoFilter` on streamed sheets | now injected into the saved container (no degrade); see divergence 16 |
 
+## Supported (Phase 4.1 — compat completion, wave 1)
+
+| Area | API | Notes |
+|---|---|---|
+| Value binders | `Cell::setValueBinder/getValueBinder`, `IValueBinder`, `DefaultValueBinder` (+`dataTypeForValue`) | custom binders run in PHP before the write buffer; `fromArray` routes per cell through them (still batched); without a custom binder the bulk fast path is unchanged |
+| Document properties | `getProperties()->setTitle/setSubject/setCreator/setLastModifiedBy/setDescription/setKeywords/setCategory/setCompany` | `setManager` accepted but PHP-side only (excelize exposes no field) |
+| Print layout | `setRowsToRepeatAtTop(+ByStartAndEnd)`, `setColumnsToRepeatAtLeftByStartAndEnd`, `setPrintArea` | implemented as the reserved `_xlnm.Print_Titles` / `_xlnm.Print_Area` defined names |
+| Conditional getter | `getStyle(range)->getConditionalStyles()` | returns rules set on that exact range **this session**; loaded files are not introspected |
+| **Workbook encryption** | `Writer\Xlsx::setPassword()`, `Reader\Xlsx::setPassword()` (easy-excel extras — PhpSpreadsheet cannot encrypt xlsx) | agile encryption via excelize; encrypting disables the auto-filter container patch (filters ride the degrade) |
+| Fills & borders | gradient fills (`linear`/`path` + `setRotation`), diagonal borders (`getDiagonal`, `setDiagonalDirection`, `Borders::DIAGONAL_*`) | gradient angles bucket to excelize shading directions (divergence 20) |
+| Merges | `unmergeCells`, `getMergeCells()` | reading merges degrades a streaming sheet, like other reads |
+| Calculation | `Calculation::getInstance()` cache controls | accepted no-ops: perf hints that cannot change output |
+
 ## Documented divergences
 
 1. **`toArray(formatData: false)` types** — values come back from excelize as
@@ -116,6 +129,10 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     (replacing semantics within a range).
 19. **Formula coverage** — 466/529 functions; the differences are listed in
     FORMULAS.md and unknown functions error at calculation, not at write.
+20. **Gradient fill angles** — PhpSpreadsheet stores an exact rotation;
+    excelize supports discrete shading directions, so the angle buckets to
+    the nearest of horizontal/vertical/diagonal-up/diagonal-down (path
+    gradients → from-center).
 
 ## Not yet supported (throws a clear exception)
 

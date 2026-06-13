@@ -88,6 +88,74 @@ class PageSetup
         return $this->push();
     }
 
+    // --- print titles & print area (reserved _xlnm defined names) -------------
+
+    private ?array $repeatRows = null;    // [start, end]
+    private ?array $repeatColumns = null; // ["A", "C"]
+
+    public function setRowsToRepeatAtTopByStartAndEnd(int $start, int $end): static
+    {
+        $this->repeatRows = [$start, $end];
+
+        return $this->pushPrintTitles();
+    }
+
+    /** @param array{0: int, 1: int} $rows */
+    public function setRowsToRepeatAtTop(array $rows): static
+    {
+        return $this->setRowsToRepeatAtTopByStartAndEnd((int) $rows[0], (int) $rows[1]);
+    }
+
+    public function setColumnsToRepeatAtLeftByStartAndEnd(string $start, string $end): static
+    {
+        $this->repeatColumns = [$start, $end];
+
+        return $this->pushPrintTitles();
+    }
+
+    public function setPrintArea(string $range): static
+    {
+        // absolute sheet-qualified ref, like PhpSpreadsheet writes it
+        $abs = \preg_replace('/([A-Z]+)(\d+)/', '\$$1\$$2', \strtoupper($range));
+        Native::definedName(
+            $this->worksheet->getParent()->getHandle(),
+            '_xlnm.Print_Area',
+            $this->quotedTitle() . '!' . $abs,
+            $this->worksheet->getTitle(),
+        );
+
+        return $this;
+    }
+
+    private function pushPrintTitles(): static
+    {
+        $parts = [];
+        if ($this->repeatColumns !== null) {
+            $parts[] = \sprintf('%s!$%s:$%s', $this->quotedTitle(), $this->repeatColumns[0], $this->repeatColumns[1]);
+        }
+        if ($this->repeatRows !== null) {
+            $parts[] = \sprintf('%s!$%d:$%d', $this->quotedTitle(), $this->repeatRows[0], $this->repeatRows[1]);
+        }
+        Native::definedName(
+            $this->worksheet->getParent()->getHandle(),
+            '_xlnm.Print_Titles',
+            \implode(',', $parts),
+            $this->worksheet->getTitle(),
+        );
+
+        return $this;
+    }
+
+    private function quotedTitle(): string
+    {
+        $title = $this->worksheet->getTitle();
+        if (\str_contains($title, ' ') || \str_contains($title, "'")) {
+            return "'" . \str_replace("'", "''", $title) . "'";
+        }
+
+        return $title;
+    }
+
     private function push(): static
     {
         Native::pageSetup(

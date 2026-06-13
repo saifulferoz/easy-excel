@@ -10,8 +10,22 @@ use EasyExcel\Native;
 
 class Xlsx
 {
+    private string $password = '';
+
     public function __construct(private Spreadsheet $spreadsheet)
     {
+    }
+
+    /**
+     * easy-excel extra (PhpSpreadsheet cannot write encrypted xlsx): a
+     * non-empty password produces an agile-encrypted container. Encryption
+     * routes streamed auto-filters through the save-time degrade.
+     */
+    public function setPassword(string $password): static
+    {
+        $this->password = $password;
+
+        return $this;
     }
 
     /**
@@ -25,7 +39,7 @@ class Xlsx
         $handle = $this->spreadsheet->getHandle();
 
         if (!\str_starts_with($filename, 'php://')) {
-            Native::saveXlsx($handle, $filename);
+            Native::saveXlsx($handle, $filename, $this->password);
 
             return;
         }
@@ -35,7 +49,7 @@ class Xlsx
             throw new Exception('Could not create temporary file');
         }
         try {
-            Native::saveXlsx($handle, $tmp);
+            Native::saveXlsx($handle, $tmp, $this->password);
             $out = \fopen($filename, 'wb');
             if ($out === false) {
                 throw new Exception("Could not open $filename for writing");

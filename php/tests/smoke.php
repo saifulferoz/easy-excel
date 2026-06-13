@@ -189,6 +189,62 @@ check($r5->getActiveSheet()->getHighestRow() === 2000, "auto-filter patched cont
 $r5->disconnectWorksheets();
 @\unlink($affile);
 
+// --- wave 4.1: binders, properties, print titles, encryption, gradients ---------
+final class SmokeBigIdBinder extends \PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder
+{
+    public function bindValue(\PhpOffice\PhpSpreadsheet\Cell\Cell $cell, mixed $value): bool
+    {
+        if (\is_numeric($value) && !\str_contains((string) $value, '.') && $value > 9007199254740992) {
+            $cell->setValueExplicit((string) $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+
+            return true;
+        }
+
+        return parent::bindValue($cell, $value);
+    }
+}
+
+\PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder(new SmokeBigIdBinder());
+$s6 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+$ws6 = $s6->getActiveSheet();
+$s6->getProperties()->setTitle('Smoke Report')->setCreator('easy-excel')->setCompany('ACME');
+$ws6->fromArray([['ID', 'Qty'], ['9007199254740995', 5], ['9007199254741002', 7]]);
+$ws6->getStyle('A1:B1')->getFill()->setFillType('linear');
+$ws6->getStyle('A1:B1')->getFill()->setRotation(90.0);
+$ws6->getStyle('A1:B1')->getFill()->getStartColor()->setRGB('4472C4');
+$ws6->getStyle('A1:B1')->getFill()->getEndColor()->setRGB('FFFFFF');
+$ws6->getStyle('B2:B3')->getBorders()->getDiagonal()->setBorderStyle('thin');
+$ws6->getStyle('B2:B3')->getBorders()->setDiagonalDirection(\PhpOffice\PhpSpreadsheet\Style\Borders::DIAGONAL_UP);
+$ws6->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 1);
+$ws6->getPageSetup()->setPrintArea('A1:B3');
+$ws6->mergeCells('A1:B1');
+$ws6->unmergeCells('A1:B1');
+
+$enc = \sys_get_temp_dir() . '/smoke-encrypted.xlsx';
+$writer6 = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($s6);
+$writer6->setPassword('smoke-pw');
+$writer6->save($enc);
+$s6->disconnectWorksheets();
+\PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder(new \PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder());
+check(\is_file($enc) && \filesize($enc) > 1000, 'encrypted workbook saved (' . \filesize($enc) . ' bytes)');
+
+$failed = false;
+try {
+    \PhpOffice\PhpSpreadsheet\IOFactory::load($enc);
+} catch (\Throwable) {
+    $failed = true;
+}
+check($failed, 'encrypted workbook rejects open without password');
+
+$reader6 = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+$reader6->setPassword('smoke-pw');
+$r6 = $reader6->load($enc);
+check($r6->getActiveSheet()->getCell('A2')->getValue() === '9007199254740995',
+    'custom binder + encryption round-trip (big ID intact)');
+check($r6->getActiveSheet()->getMergeCells() === [], 'unmerge removed the merge');
+$r6->disconnectWorksheets();
+@\unlink($enc);
+
 // --- csv + load control surface ------------------------------------------------
 $s2 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
 $s2->getActiveSheet()->fromArray([['a', '-x', 'b,c']]);

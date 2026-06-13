@@ -150,6 +150,13 @@ class Spreadsheet
         \array_splice($this->worksheets, $sheetIndex, 1);
     }
 
+    private ?Document\Properties $properties = null;
+
+    public function getProperties(): Document\Properties
+    {
+        return $this->properties ??= new Document\Properties($this);
+    }
+
     public function addNamedRange(NamedRange $namedRange): bool
     {
         Native::definedName(

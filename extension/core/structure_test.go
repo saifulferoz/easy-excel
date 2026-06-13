@@ -69,7 +69,7 @@ func TestStyledHeaderStaysStreaming(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillRows(t, w, "Worksheet", 1, 50)
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	if w.Degraded() {
@@ -112,7 +112,7 @@ func TestNumberFormatStreamsInline(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillRows(t, w, "Worksheet", 1, 10)
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	if w.Degraded() {
@@ -136,7 +136,7 @@ func TestFullColumnFormatStreams(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillRows(t, w, "Worksheet", 1, 20)
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	if w.Degraded() {
@@ -163,7 +163,7 @@ func TestStyleMergeLayersComponents(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillRows(t, w, "Worksheet", 1, 3)
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, path)
@@ -191,7 +191,7 @@ func TestStyleAfterWriteDegradesAtSaveOnly(t *testing.T) {
 	if w.Degraded() {
 		t.Fatal("styling already-written rows should defer the degrade to save")
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	if !w.Degraded() {
@@ -221,7 +221,7 @@ func TestMergeCellsWhileStreaming(t *testing.T) {
 	if err := w.MergeCells("Worksheet", "A4:B5"); err != nil { // sw active
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	if w.Degraded() {
@@ -271,7 +271,7 @@ func TestDeferredOpsApplyAtSave(t *testing.T) {
 	if err := w.SetDefinedName("data", "Worksheet!$A$1:$C$10", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -358,13 +358,13 @@ func TestStructureOpsOnLoadedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillRows(t, w, "Worksheet", 1, 5)
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	w.Close()
 
 	// loaded files are random-access: ops apply immediately
-	w2, err := Open(path, testEnv())
+	w2, err := Open(path, "", testEnv())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +376,7 @@ func TestStructureOpsOnLoadedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "out.xlsx")
-	if err := w2.SaveXlsx(out); err != nil {
+	if err := w2.SaveXlsx(out, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, out)
@@ -409,7 +409,7 @@ func TestBroadLateStyleKeepsNarrowEarlierStyles(t *testing.T) {
 	if err := w.ApplyStyle("Worksheet", "A8:A15", `{"font":{"bold":true}}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, path)
@@ -447,7 +447,7 @@ func TestNestedRectLayeringSurvivesBroadStyle(t *testing.T) {
 	if err := w.ApplyStyle("Worksheet", "A1:C10", `{"alignment":{"vertical":"center"}}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, path)
@@ -490,7 +490,7 @@ func TestCrossOverlapLayering(t *testing.T) {
 	if err := w.ApplyStyle("Worksheet", "A1:G15", `{"alignment":{"vertical":"center"}}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, path)
@@ -533,7 +533,7 @@ func TestAutoSizeSkipsMergedCells(t *testing.T) {
 	if err := w.SetColAutoSize("Worksheet", 1, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, path)

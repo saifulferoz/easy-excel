@@ -96,8 +96,24 @@ class Style
             $this->range,
             \array_map(static fn (Conditional $c): array => $c->toSpec(), $conditionalStyles),
         );
+        $this->worksheet->rememberConditionalStyles($this->range, $conditionalStyles);
 
         return $this;
+    }
+
+    /**
+     * Rules previously set on this exact range **in this session** (loaded
+     * files are not introspected — COMPAT.md).
+     *
+     * @return list<Conditional>
+     */
+    public function getConditionalStyles(): array
+    {
+        if ($this->worksheet === null) {
+            return [];
+        }
+
+        return $this->worksheet->recallConditionalStyles($this->range);
     }
 
     /** @param array<string, mixed> $styleArray PhpSpreadsheet's nested style array */

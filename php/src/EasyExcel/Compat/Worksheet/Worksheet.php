@@ -67,6 +67,12 @@ class Worksheet
 
     public function setCellValue(string|array $coordinate, mixed $value): static
     {
+        if (($binder = Cell::customValueBinder()) !== null) {
+            [$col, $row] = $this->toIndexes($coordinate);
+            $binder->bindValue(new Cell($this, Coordinate::stringFromColumnIndex($col) . $row), $value);
+
+            return $this;
+        }
         [$col, $row] = $this->toIndexes($coordinate);
         $this->bufferCell($row, $col, $this->bindValue($value));
 
@@ -107,6 +113,25 @@ class Worksheet
             $source = [$source]; // single row, like PhpSpreadsheet
         }
         [$startCol, $startRow] = Coordinate::indexesFromString($startCell);
+
+        // a custom binder must see every value: route through the buffered
+        // per-cell path (slower, still batched per 512 rows)
+        if (($binder = Cell::customValueBinder()) !== null) {
+            $row = $startRow;
+            foreach ($source as $rowData) {
+                $col = $startCol;
+                foreach ($rowData as $value) {
+                    $isNull = $strictNullComparison ? $value === $nullValue : $value == $nullValue;
+                    if (!$isNull) {
+                        $binder->bindValue(new Cell($this, Coordinate::stringFromColumnIndex($col) . $row), $value);
+                    }
+                    ++$col;
+                }
+                ++$row;
+            }
+
+            return $this;
+        }
         $this->flush();
 
         $chunk = [];
@@ -274,6 +299,31 @@ class Worksheet
         return $this;
     }
 
+    public function unmergeCells(string|array $range): static
+    {
+        if (\is_array($range)) {
+            $range = \implode(':', \array_map(
+                static fn (array $c): string => Coordinate::stringFromColumnIndex($c[0]) . $c[1],
+                $range
+            ));
+        }
+        Native::unmergeCells($this->parent->getHandle(), $this->title, $range);
+
+        return $this;
+    }
+
+    /** @return array<string, string> range => range, PhpSpreadsheet shape */
+    public function getMergeCells(): array
+    {
+        $this->flush();
+        $out = [];
+        foreach (Native::getMerges($this->parent->getHandle(), $this->title) as $range) {
+            $out[$range] = $range;
+        }
+
+        return $out;
+    }
+
     public function getStyle(string|array $cellCoordinate): Style
     {
         if (\is_array($cellCoordinate)) {
@@ -281,6 +331,21 @@ class Worksheet
         }
 
         return new Style($this, $cellCoordinate);
+    }
+
+    /** @var array<string, list<\EasyExcel\Compat\Style\Conditional>> */
+    private array $conditionalRegistry = [];
+
+    /** @internal rules set this session, keyed by range (Style::getConditionalStyles) */
+    public function rememberConditionalStyles(string $range, array $rules): void
+    {
+        $this->conditionalRegistry[$range] = $rules;
+    }
+
+    /** @internal */
+    public function recallConditionalStyles(string $range): array
+    {
+        return $this->conditionalRegistry[$range] ?? [];
     }
 
     public function getColumnDimension(string $column): ColumnDimension

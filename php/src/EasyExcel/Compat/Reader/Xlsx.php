@@ -12,6 +12,16 @@ class Xlsx
 {
     private bool $readDataOnly = false;
 
+    private string $password = '';
+
+    /** easy-excel extra: opens agile-encrypted workbooks. */
+    public function setPassword(string $password): static
+    {
+        $this->password = $password;
+
+        return $this;
+    }
+
     public function setReadDataOnly(bool $readDataOnly): static
     {
         // values-only iteration is already the extension's fast path;
@@ -38,6 +48,6 @@ class Xlsx
             throw new Exception("File \"$filename\" does not exist.");
         }
 
-        return Spreadsheet::fromHandle(Native::open($filename));
+        return Spreadsheet::fromHandle(Native::open($filename, $this->password));
     }
 }

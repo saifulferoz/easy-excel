@@ -173,6 +173,12 @@ func (w *Workbook) applyOpPhase3(sheet string, op pendingOp) error {
 			return err
 		}
 		return w.f.AddChart(sheet, op.ref, chart)
+	case opUnmerge:
+		tl, br, err := splitRange(op.ref)
+		if err != nil {
+			return err
+		}
+		return w.f.UnmergeCell(sheet, tl, br)
 	}
 	return fmt.Errorf("easy-excel: unknown pending op %d", op.kind)
 }

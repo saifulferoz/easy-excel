@@ -1,6 +1,7 @@
 package compat
 
 import (
+	"sort"
 	"testing"
 )
 
@@ -72,11 +73,68 @@ func TestTranslateRejectsUnknown(t *testing.T) {
 	for _, spec := range []StyleSpec{
 		{"sparkles": map[string]any{}},
 		{"font": map[string]any{"glow": true}},
-		{"fill": map[string]any{"fillType": "linear"}},
-		{"borders": map[string]any{"diagonal": map[string]any{"borderStyle": "thin"}}},
+		{"fill": map[string]any{"fillType": "zigzag"}},
+		{"borders": map[string]any{"vertical": map[string]any{"borderStyle": "thin"}}},
 	} {
 		if _, err := TranslateStyle(spec); err == nil {
 			t.Errorf("expected error for %v", spec)
+		}
+	}
+}
+
+func TestTranslateGradientFill(t *testing.T) {
+	spec, err := ParseStyleSpec(`{"fill":{"fillType":"linear","rotation":90,
+		"startColor":{"rgb":"FF0000"},"endColor":{"rgb":"0000FF"}}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	style, err := TranslateStyle(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if style.Fill.Type != "gradient" || style.Fill.Shading != 3 {
+		t.Errorf("gradient fill wrong: %+v", style.Fill)
+	}
+	if len(style.Fill.Color) != 2 || style.Fill.Color[0] != "FF0000" || style.Fill.Color[1] != "0000FF" {
+		t.Errorf("gradient colors wrong: %v", style.Fill.Color)
+	}
+	// rotation buckets: 0 horizontal, 45 diagonal down, 135 diagonal up
+	for rot, want := range map[float64]int{0: 0, 45: 9, 135: 6} {
+		if got := gradientShading(rot, false); got != want {
+			t.Errorf("rotation %v → shading %d, want %d", rot, got, want)
+		}
+	}
+	if gradientShading(0, true) != 16 {
+		t.Error("path gradients should map to from-center")
+	}
+}
+
+func TestTranslateDiagonalBorders(t *testing.T) {
+	for direction, wantTypes := range map[float64][]string{
+		1: {"diagonalUp"},
+		2: {"diagonalDown"},
+		3: {"diagonalDown", "diagonalUp"},
+	} {
+		spec := StyleSpec{"borders": map[string]any{
+			"diagonal":          map[string]any{"borderStyle": "thin"},
+			"diagonalDirection": direction,
+		}}
+		style, err := TranslateStyle(spec)
+		if err != nil {
+			t.Fatalf("direction %v: %v", direction, err)
+		}
+		var got []string
+		for _, b := range style.Border {
+			got = append(got, b.Type)
+		}
+		sort.Strings(got)
+		if len(got) != len(wantTypes) {
+			t.Fatalf("direction %v: borders %v, want %v", direction, got, wantTypes)
+		}
+		for i := range got {
+			if got[i] != wantTypes[i] {
+				t.Errorf("direction %v: borders %v, want %v", direction, got, wantTypes)
+			}
 		}
 	}
 }

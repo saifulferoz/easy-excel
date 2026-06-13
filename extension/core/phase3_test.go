@@ -25,7 +25,7 @@ func TestAutoFilterPatchKeepsStreaming(t *testing.T) {
 	if err := w.AutoFilter("Worksheet", "A1:C200"); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	if w.Degraded() {
@@ -56,7 +56,7 @@ func TestAutoFilterWithStyledStream(t *testing.T) {
 	if err := w.AutoFilter("Worksheet", "A1:C50"); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	if w.Degraded() {
@@ -84,7 +84,7 @@ func TestAutoFilterWithOtherPendingUsesDegrade(t *testing.T) {
 	if err := w.SetHyperlink("Worksheet", "A1", "https://example.com", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	if !w.Degraded() {
@@ -114,7 +114,7 @@ func TestDataValidationRoundTrip(t *testing.T) {
 		`{"type":"whole","operator":"between","formula1":"1","formula2":"100","showErrorMessage":true}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, path)
@@ -156,7 +156,7 @@ func TestConditionalFormatRoundTrip(t *testing.T) {
 	if err := w.SetConditionalFormat("Worksheet", "B2:B10", rules); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, path)
@@ -198,7 +198,7 @@ func TestAddImageScalesToRequestedSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "with-image.xlsx")
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, path)
@@ -223,7 +223,7 @@ func TestProtectSheetApplied(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "protected.xlsx")
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	assertSheetXMLContains(t, path, "<sheetProtection")
@@ -243,7 +243,7 @@ func TestAddChartSaves(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "chart.xlsx")
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	f := reopen(t, path)

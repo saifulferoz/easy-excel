@@ -180,27 +180,50 @@ func translateFont(m map[string]any, style *excelize.Style) error {
 func translateFill(m map[string]any, style *excelize.Style) error {
 	fill := excelize.Fill{Type: "pattern", Pattern: 1}
 	var start, end string
+	rotation := 0.0
+	gradient := false
+	fromCenter := false
 	for k, v := range m {
 		switch k {
 		case "fillType":
 			t := specString(v)
-			if strings.HasPrefix(t, "linear") || strings.HasPrefix(t, "path") {
-				return fmt.Errorf("easy-excel: gradient fills are not supported (see COMPAT.md)")
+			switch {
+			case t == "linear":
+				gradient = true
+			case strings.HasPrefix(t, "path"):
+				gradient, fromCenter = true, true
+			default:
+				p, ok := fillPatterns[t]
+				if !ok {
+					return fmt.Errorf("easy-excel: unsupported fill type %q", t)
+				}
+				fill.Pattern = p
 			}
-			p, ok := fillPatterns[t]
-			if !ok {
-				return fmt.Errorf("easy-excel: unsupported fill type %q", t)
-			}
-			fill.Pattern = p
 		case "startColor", "color":
 			start = colorOf(v)
 		case "endColor":
 			end = colorOf(v)
 		case "rotation":
-			// gradient-only; ignored for pattern fills like PhpSpreadsheet
+			if n, ok := v.(float64); ok {
+				rotation = n
+			}
 		default:
 			return fmt.Errorf("easy-excel: unsupported fill property %q", k)
 		}
+	}
+	if gradient {
+		if start == "" {
+			start = "FFFFFF"
+		}
+		if end == "" {
+			end = start
+		}
+		fill.Type = "gradient"
+		fill.Pattern = 0
+		fill.Color = []string{start, end}
+		fill.Shading = gradientShading(rotation, fromCenter)
+		style.Fill = fill
+		return nil
 	}
 	if start != "" {
 		fill.Color = []string{start}
@@ -211,9 +234,41 @@ func translateFill(m map[string]any, style *excelize.Style) error {
 	return nil
 }
 
+// gradientShading buckets PhpSpreadsheet's rotation degrees into excelize's
+// shading variants (0 horizontal, 3 vertical, 6 diagonal up, 9 diagonal
+// down, 16 from center) — nearest direction, an approximation (COMPAT.md).
+func gradientShading(rotation float64, fromCenter bool) int {
+	if fromCenter {
+		return 16
+	}
+	r := int(rotation) % 180
+	if r < 0 {
+		r += 180
+	}
+	switch {
+	case r < 23 || r >= 158:
+		return 0 // horizontal
+	case r < 68:
+		return 9 // diagonal down
+	case r < 113:
+		return 3 // vertical
+	default:
+		return 6 // diagonal up
+	}
+}
+
 func translateBorders(m map[string]any, style *excelize.Style) error {
 	sides := map[string]map[string]any{}
+	// PhpSpreadsheet: 0 none, 1 up, 2 down, 3 both
+	diagonalDirection := 0
+	var diagonal map[string]any
 	for k, v := range m {
+		if k == "diagonalDirection" {
+			if n, ok := v.(float64); ok {
+				diagonalDirection = int(n)
+			}
+			continue
+		}
 		side, ok := v.(map[string]any)
 		if !ok {
 			return fmt.Errorf("easy-excel: border %q must be an array", k)
@@ -225,10 +280,22 @@ func translateBorders(m map[string]any, style *excelize.Style) error {
 			}
 		case "left", "right", "top", "bottom":
 			sides[k] = side
-		case "diagonal", "vertical", "horizontal", "diagonalDirection":
+		case "diagonal":
+			diagonal = side
+		case "vertical", "horizontal":
 			return fmt.Errorf("easy-excel: border %q is not supported (see COMPAT.md)", k)
 		default:
 			return fmt.Errorf("easy-excel: unsupported border %q", k)
+		}
+	}
+	if diagonal != nil {
+		switch diagonalDirection {
+		case 1:
+			sides["diagonalUp"] = diagonal
+		case 2:
+			sides["diagonalDown"] = diagonal
+		case 3:
+			sides["diagonalUp"], sides["diagonalDown"] = diagonal, diagonal
 		}
 	}
 	keys := make([]string, 0, len(sides))

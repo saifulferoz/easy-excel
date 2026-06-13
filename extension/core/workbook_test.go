@@ -61,14 +61,14 @@ func TestStreamWriteSaveReload(t *testing.T) {
 	if w.Degraded() {
 		t.Fatal("sequential writes must stay in streaming mode")
 	}
-	if err := w.SaveXlsx(path); err != nil {
+	if err := w.SaveXlsx(path, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	r, err := Open(path, testEnv())
+	r, err := Open(path, "", testEnv())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestSaveCsv(t *testing.T) {
 func TestPathPolicyEnforcedOnSave(t *testing.T) {
 	w, _ := New(testEnv())
 	defer w.Close()
-	if err := w.SaveXlsx("https://evil/out.xlsx"); err == nil {
+	if err := w.SaveXlsx("https://evil/out.xlsx", ""); err == nil {
 		t.Fatal("URL scheme must be rejected")
 	}
 }

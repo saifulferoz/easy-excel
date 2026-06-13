@@ -45,6 +45,22 @@ class Fill
         return $this;
     }
 
+    private float $rotation = 0.0;
+
+    /** Gradient angle in degrees (bucketed to a shading direction, COMPAT.md). */
+    public function setRotation(float $rotation): static
+    {
+        $this->rotation = $rotation;
+        $this->style->mergeComponent('fill', ['rotation' => $rotation]);
+
+        return $this;
+    }
+
+    public function getRotation(): float
+    {
+        return $this->rotation;
+    }
+
     public function getFillType(): string
     {
         return $this->fillType;

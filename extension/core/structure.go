@@ -52,6 +52,7 @@ const (
 	opImage
 	opProtect
 	opChart
+	opUnmerge
 )
 
 type pendingOp struct {

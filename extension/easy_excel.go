@@ -124,9 +124,9 @@ func easy_excel_new() unsafe.Pointer {
 	return pair(handles.Put(wb), nil)
 }
 
-//export_php:function easy_excel_open(string $path): array
-func easy_excel_open(path *C.zend_string) unsafe.Pointer {
-	wb, err := core.Open(goStr(path), env)
+//export_php:function easy_excel_open(string $path, string $password): array
+func easy_excel_open(path *C.zend_string, password *C.zend_string) unsafe.Pointer {
+	wb, err := core.Open(goStr(path), goStr(password), env)
 	if err != nil {
 		return pair(nil, err)
 	}
@@ -467,13 +467,48 @@ func easy_excel_add_chart(handle int64, sheet *C.zend_string, cell *C.zend_strin
 
 // --- save -------------------------------------------------------------------------
 
-//export_php:function easy_excel_save_xlsx(int $handle, string $path): ?string
-func easy_excel_save_xlsx(handle int64, path *C.zend_string) unsafe.Pointer {
+//export_php:function easy_excel_save_xlsx(int $handle, string $path, string $password): ?string
+func easy_excel_save_xlsx(handle int64, path *C.zend_string, password *C.zend_string) unsafe.Pointer {
 	wb, err := workbook(handle)
 	if err != nil {
 		return errOnly(err)
 	}
-	return errOnly(wb.SaveXlsx(goStr(path)))
+	return errOnly(wb.SaveXlsx(goStr(path), goStr(password)))
+}
+
+//export_php:function easy_excel_doc_props(int $handle, string $propsJson): ?string
+func easy_excel_doc_props(handle int64, propsJson *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return errOnly(err)
+	}
+	return errOnly(wb.SetDocProps(goStr(propsJson)))
+}
+
+//export_php:function easy_excel_unmerge_cells(int $handle, string $sheet, string $range): ?string
+func easy_excel_unmerge_cells(handle int64, sheet *C.zend_string, ref *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return errOnly(err)
+	}
+	return errOnly(wb.UnmergeCells(goStr(sheet), goStr(ref)))
+}
+
+//export_php:function easy_excel_get_merges(int $handle, string $sheet): array
+func easy_excel_get_merges(handle int64, sheet *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return pair(nil, err)
+	}
+	refs, err := wb.Merges(goStr(sheet))
+	if err != nil {
+		return pair(nil, err)
+	}
+	list := make([]any, len(refs))
+	for i, r := range refs {
+		list[i] = r
+	}
+	return pair(list, nil)
 }
 
 //export_php:function easy_excel_save_csv(int $handle, string $path, string $sheet, string $delimiter, bool $crlf, bool $bom, bool $guardFormulas): ?string

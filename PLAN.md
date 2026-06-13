@@ -427,6 +427,17 @@ corresponding MISSING.md entries deleted.
 | `unmergeCells` + merge getter | `f.UnmergeCell` / `f.GetMergeCells` passthroughs | S |
 | Calculation-control no-ops (`disableCalculationCache` etc.) | accept-and-ignore: perf hints that cannot change output; documented in COMPAT.md | S |
 
+> **Wave 4.1 outcome (2026-06-13):** all eight items shipped — value
+> binders run in PHP ahead of the write buffer (bulk fast path untouched
+> when no custom binder is set), document properties + company, print
+> titles/area as `_xlnm` defined names, conditional getter (session
+> state), workbook encryption as writer/reader `setPassword()` extras
+> (encryption disables the auto-filter container patch; filters ride the
+> degrade), gradient fills (angle buckets to excelize shading), diagonal
+> borders, unmerge + merge getter, calc-cache no-ops. 3 bridge functions
+> added, 2 signatures extended (38 exports). Verified: 7 new Go tests,
+> 12 new shim tests (64 total), smoke extended to 28 checks in Docker.
+
 **Wave 4.2 — reading & iteration**
 
 | Item | Approach | Effort |

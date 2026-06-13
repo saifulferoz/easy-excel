@@ -15,18 +15,22 @@ deleted here.
 
 | API | Status / workaround |
 |---|---|
-| `Cell::setValueBinder()`, `DefaultValueBinder`, `IValueBinder`, custom binder classes | Not supported — binding happens in Go with DefaultValueBinder semantics (PHP callbacks across the CGO boundary are the documented slow path, PLAN.md §5). Workaround: `setCellValueExplicit()` for values that need a non-default type, e.g. >2⁵³ IDs as strings. |
-| `Spreadsheet::getDefaultStyle()` | Workbook-wide default font/style not supported. Workaround: apply the style to the used range. |
-| `Spreadsheet::getProperties()` (`setTitle`, `setSubject`, `setCreator`, …) | Document metadata not written. |
-| `PageSetup::setRowsToRepeatAtTopByStartAndEnd()` (print titles, print area) | Page setup covers orientation / paper size / fit-to-page only. |
-| `Style::getConditionalStyles()` (getter) | Rules are write-only; build the rule array locally and call `setConditionalStyles()` once. |
+| `Spreadsheet::getDefaultStyle()` | Workbook-wide default font/style not supported (planned, wave 4.2). Workaround: apply the style to the used range. |
+
+Closed by wave 4.1 (2026-06-13): custom value binders, document properties
+(`getProperties()`; `setManager` is kept PHP-side only — excelize has no
+field for it), print titles + print area, the `getConditionalStyles()`
+getter, workbook encryption (writer/reader `setPassword()`, easy-excel
+extras), gradient fills, diagonal borders, `unmergeCells` + merge getter,
+and calculation-cache no-ops.
 
 ## Known gaps (by area)
 
 **Reading / introspection**
 - Style read-back from loaded files (`getFont()->getBold()` etc. return what
   was set on that PHP object, not stylesheet state — COMPAT.md §14)
-- Merge/auto-filter/validation/conditional getters
+- Auto-filter/validation/conditional getters (the merge getter landed in
+  wave 4.1)
 - `getRowIterator()` / `getColumnIterator()` / `getCellCollection()`
   (chunked `toArray` covers bulk reads)
 - `Reader\IReadFilter` with PHP callbacks
@@ -35,7 +39,7 @@ deleted here.
 **Structure editing**
 - `insertNewRowBefore` / `removeRow` / `insertNewColumnBefore` /
   `removeColumn`
-- `unmergeCells`, `duplicateStyle`, `removeConditionalStyles`
+- `duplicateStyle`, `removeConditionalStyles`
 - Sheet copy/clone (`Spreadsheet::addExternalSheet`, `Worksheet::copy`),
   `createSheet($index)` at arbitrary positions
 - Sheet views: gridline toggle, tab color, zoom, right-to-left
@@ -45,7 +49,7 @@ deleted here.
   accept plain text only and `Run::getFont()` throws)
 - PhpSpreadsheet's `Chart\*` object model — use the native declarative API
   instead (`Worksheet::addNativeChart`, NATIVE.md)
-- Gradient fills; diagonal/vertical/horizontal borders
+- Vertical/horizontal borders (conditional-formatting-only border sides)
 - Drawings beyond file-based images (memory drawings, headers/footers
   images, cell background images)
 
@@ -53,14 +57,11 @@ deleted here.
 - Readers/writers: Ods, Xls, Html, Pdf, Slk, Gnumeric — install the real
   `phpoffice/phpspreadsheet` alongside (the alias bootstrap stays dormant
   and defers to it) or convert externally
-- Workbook encryption / password-protected open (sheet protection **is**
-  supported; full encryption is feasible — excelize supports both directions
-  — and is planned in Phase 4.1)
 - 63 of PhpSpreadsheet's 529 calculation functions (list in FORMULAS.md)
 
 **Misc**
-- `Calculation` engine controls (`disableCalculationCache`, array-formula
-  toggles) — calculation is delegated to excelize
+- `Calculation` array-formula toggles (the cache controls are accepted
+  no-ops since wave 4.1) — calculation is delegated to excelize
 - Headers/footers, page margins, print options beyond page setup
 - Cell autofilter object model (`getAutoFilter()->setRange()`,
   column rules) — only `setAutoFilter($range)`

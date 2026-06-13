@@ -109,8 +109,10 @@ function easy_excel_new(): array
     return [$h, null];
 }
 
-function easy_excel_open(string $path): array
+function easy_excel_open(string $path, string $password = ''): array
 {
+    EasyExcelFake::$log[] = ['open', [$path, $password]];
+
     return [null, "fake: open not supported"];
 }
 
@@ -393,9 +395,9 @@ function easy_excel_add_chart(int $handle, string $sheet, string $cell, string $
     return null;
 }
 
-function easy_excel_save_xlsx(int $handle, string $path): ?string
+function easy_excel_save_xlsx(int $handle, string $path, string $password = ''): ?string
 {
-    EasyExcelFake::$log[] = ['save_xlsx', [$handle, $path]];
+    EasyExcelFake::$log[] = ['save_xlsx', [$handle, $path, $password]];
     \file_put_contents($path, \json_encode(EasyExcelFake::$store[$handle]));
 
     return null;
@@ -424,6 +426,39 @@ function easy_excel_save_csv(int $handle, string $path, string $sheet, string $d
     \fclose($fh);
 
     return null;
+}
+
+function easy_excel_doc_props(int $handle, string $propsJson): ?string
+{
+    $props = \json_decode($propsJson, true);
+    if (!\is_array($props)) {
+        return 'fake: doc props are not valid JSON';
+    }
+    EasyExcelFake::$log[] = ['doc_props', [$handle, $props]];
+
+    return null;
+}
+
+function easy_excel_unmerge_cells(int $handle, string $sheet, string $range): ?string
+{
+    EasyExcelFake::$log[] = ['unmerge_cells', [$handle, $sheet, $range]];
+
+    return null;
+}
+
+function easy_excel_get_merges(int $handle, string $sheet): array
+{
+    $merges = [];
+    foreach (EasyExcelFake::$log as [$fn, $args]) {
+        if ($fn === 'merge_cells' && $args[0] === $handle && $args[1] === $sheet) {
+            $merges[$args[2]] = true;
+        }
+        if ($fn === 'unmerge_cells' && $args[0] === $handle && $args[1] === $sheet) {
+            unset($merges[$args[2]]);
+        }
+    }
+
+    return [\array_keys($merges), null];
 }
 
 function easy_excel_stats(): array

@@ -127,7 +127,8 @@ func New(env *Env) (*Workbook, error) {
 }
 
 // Open loads an existing workbook; all sheets start in random-access mode.
-func Open(path string, env *Env) (*Workbook, error) {
+// password decrypts agile-encrypted files ("" for plain ones).
+func Open(path, password string, env *Env) (*Workbook, error) {
 	abs, err := env.policy().Resolve(path)
 	if err != nil {
 		return nil, err
@@ -146,6 +147,7 @@ func Open(path string, env *Env) (*Workbook, error) {
 		return nil, err
 	}
 	f, err := excelize.OpenFile(abs, excelize.Options{
+		Password:          password,
 		UnzipSizeLimit:    unzipSizeLimit,
 		UnzipXMLSizeLimit: unzipXMLSizeLimit,
 	})
@@ -809,9 +811,10 @@ func splitRange(ref string) (string, string, error) {
 
 // --- save -------------------------------------------------------------------
 
-// SaveXlsx flushes all stream writers and writes the workbook to path.
-// The workbook stays usable afterwards (further writes use random mode).
-func (w *Workbook) SaveXlsx(path string) error {
+// SaveXlsx flushes all stream writers and writes the workbook to path; a
+// non-empty password produces an agile-encrypted container. The workbook
+// stays usable afterwards (further writes use random mode).
+func (w *Workbook) SaveXlsx(path, password string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.closed {
@@ -826,8 +829,13 @@ func (w *Workbook) SaveXlsx(path string) error {
 		return err
 	}
 	defer release()
-	if err := w.settleForSave(); err != nil {
+	// the auto-filter container patch cannot run on an encrypted (CFB)
+	// container, so encryption forces filters through the degrade path
+	if err := w.settleForSave(password == ""); err != nil {
 		return err
+	}
+	if password != "" {
+		return w.f.SaveAs(abs, excelize.Options{Password: password})
 	}
 	patches := w.filterPatches()
 	if len(patches) == 0 {
@@ -870,7 +878,7 @@ func (w *Workbook) WriteXlsxTo(out io.Writer) error {
 		return err
 	}
 	defer release()
-	if err := w.settleForSave(); err != nil {
+	if err := w.settleForSave(true); err != nil {
 		return err
 	}
 	patches := w.filterPatches()
@@ -899,14 +907,24 @@ func (w *Workbook) WriteXlsxTo(out io.Writer) error {
 // sheets are special-cased: when they are the only reason to degrade, they
 // are pulled out and injected into the saved container instead
 // (filterpatch.go), keeping the save streaming.
-func (w *Workbook) settleForSave() error {
+func (w *Workbook) settleForSave(allowPatch bool) error {
+	if !allowPatch {
+		// container patching is off (encrypted output): route any patched
+		// filters from earlier saves back through the pending queue
+		for name, ref := range w.filters {
+			if st, ok := w.sheets[name]; ok {
+				st.pending = append(st.pending, pendingOp{kind: opAutoFilter, ref: ref})
+			}
+			delete(w.filters, name)
+		}
+	}
 	anyStreamed := false
 	for _, st := range w.sheets {
 		if st.sw != nil {
 			anyStreamed = true
 		}
 	}
-	if anyStreamed {
+	if anyStreamed && allowPatch {
 		extracted := map[string]string{}
 		for name, st := range w.sheets {
 			kept := st.pending[:0]

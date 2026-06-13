@@ -13,8 +13,27 @@ use EasyExcel\Native;
  */
 class Cell
 {
+    private static ?IValueBinder $valueBinder = null;
+
     public function __construct(private Worksheet $worksheet, private string $coordinate)
     {
+    }
+
+    /** Custom binders run in PHP before values reach the write buffer. */
+    public static function setValueBinder(IValueBinder $binder): void
+    {
+        self::$valueBinder = $binder;
+    }
+
+    public static function getValueBinder(): IValueBinder
+    {
+        return self::$valueBinder ??= new DefaultValueBinder();
+    }
+
+    /** @internal null when the Go-side default binding can be used as-is */
+    public static function customValueBinder(): ?IValueBinder
+    {
+        return self::$valueBinder;
     }
 
     public function getValue(): mixed

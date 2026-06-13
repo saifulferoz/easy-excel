@@ -4,13 +4,38 @@ declare(strict_types=1);
 
 namespace EasyExcel\Compat\Style;
 
-/** Border collection: top/bottom/left/right plus the allBorders pseudo-side. */
+/** Border collection: top/bottom/left/right/diagonal plus allBorders. */
 class Borders
 {
+    public const DIAGONAL_NONE = 0;
+    public const DIAGONAL_UP = 1;
+    public const DIAGONAL_DOWN = 2;
+    public const DIAGONAL_BOTH = 3;
+
     private array $sides = [];
+
+    private int $diagonalDirection = self::DIAGONAL_NONE;
 
     public function __construct(private Style $style)
     {
+    }
+
+    public function getDiagonal(): Border
+    {
+        return $this->side('diagonal');
+    }
+
+    public function setDiagonalDirection(int $direction): static
+    {
+        $this->diagonalDirection = $direction;
+        $this->style->mergeComponent('borders', ['diagonalDirection' => $direction]);
+
+        return $this;
+    }
+
+    public function getDiagonalDirection(): int
+    {
+        return $this->diagonalDirection;
     }
 
     public function getTop(): Border

@@ -55,11 +55,11 @@ final class Native
         return (int) self::unwrap(\easy_excel_new());
     }
 
-    public static function open(string $path): int
+    public static function open(string $path, string $password = ''): int
     {
         self::assertAvailable();
 
-        return (int) self::unwrap(\easy_excel_open($path));
+        return (int) self::unwrap(\easy_excel_open($path, $password));
     }
 
     public static function close(int $handle): void
@@ -230,9 +230,26 @@ final class Native
         self::check(\easy_excel_add_chart($handle, $sheet, $cell, \json_encode($spec, \JSON_THROW_ON_ERROR)));
     }
 
-    public static function saveXlsx(int $handle, string $path): void
+    public static function saveXlsx(int $handle, string $path, string $password = ''): void
     {
-        self::check(\easy_excel_save_xlsx($handle, $path));
+        self::check(\easy_excel_save_xlsx($handle, $path, $password));
+    }
+
+    /** @param array<string, string> $props title/subject/creator/lastModifiedBy/description/keywords/category/company */
+    public static function docProps(int $handle, array $props): void
+    {
+        self::check(\easy_excel_doc_props($handle, \json_encode($props, \JSON_THROW_ON_ERROR)));
+    }
+
+    public static function unmergeCells(int $handle, string $sheet, string $range): void
+    {
+        self::check(\easy_excel_unmerge_cells($handle, $sheet, $range));
+    }
+
+    /** @return list<string> merged ranges like "A1:C3" */
+    public static function getMerges(int $handle, string $sheet): array
+    {
+        return self::unwrap(\easy_excel_get_merges($handle, $sheet)) ?? [];
     }
 
     public static function saveCsv(
