@@ -42,12 +42,30 @@ class Xlsx
             && \in_array(\strtolower(\pathinfo($filename, PATHINFO_EXTENSION)), ['xlsx', 'xlsm', 'xltx', 'xltm'], true);
     }
 
+    private ?IReadFilter $readFilter = null;
+
+    /** Filtered-out cells come back as null from the read APIs (COMPAT.md). */
+    public function setReadFilter(IReadFilter $readFilter): static
+    {
+        $this->readFilter = $readFilter;
+
+        return $this;
+    }
+
+    public function getReadFilter(): ?IReadFilter
+    {
+        return $this->readFilter;
+    }
+
     public function load(string $filename, int $flags = 0): Spreadsheet
     {
         if (!\is_file($filename)) {
             throw new Exception("File \"$filename\" does not exist.");
         }
 
-        return Spreadsheet::fromHandle(Native::open($filename, $this->password));
+        $spreadsheet = Spreadsheet::fromHandle(Native::open($filename, $this->password));
+        $spreadsheet->setReadFilter($this->readFilter);
+
+        return $spreadsheet;
     }
 }

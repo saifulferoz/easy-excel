@@ -29,7 +29,7 @@ class Fill
     public const FILL_GRADIENT_LINEAR = 'linear';
     public const FILL_GRADIENT_PATH = 'path';
 
-    private string $fillType = self::FILL_NONE;
+    private ?string $fillType = null;
     private ?Color $startColor = null;
     private ?Color $endColor = null;
 
@@ -63,7 +63,8 @@ class Fill
 
     public function getFillType(): string
     {
-        return $this->fillType;
+        return $this->fillType
+            ?? (string) ($this->style->nativeComponent('fill')['fillType'] ?? self::FILL_NONE);
     }
 
     public function setStartColor(Color $color): static

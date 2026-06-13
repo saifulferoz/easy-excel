@@ -448,6 +448,18 @@ corresponding MISSING.md entries deleted.
 | Getters: validations, conditionals, auto-filter, defined names | `f.GetDataValidations` / `GetConditionalFormats` / `GetDefinedName` passthroughs (auto-filter from the workbook-side filter map) | S |
 | `getDefaultStyle()` | workbook-level default spec prepended to every sheet's style log as a full-range entry (folds under everything) + `SetColStyle` catch-all for untouched cells | M |
 
+> **Wave 4.2 outcome (2026-06-13):** all five items shipped — row/column
+> iterators (coordinate facades; `toArray` stays the bulk path),
+> `IReadFilter` applied at chunk assembly, style read-back through a
+> reverse spec translation (`getStyle()` getters reflect loaded files;
+> **streaming sheets answer from the style log / pending queues so
+> read-back never degrades a workbook mid-write**) + `duplicateStyle`,
+> the validation/conditional/defined-name/auto-filter getters, and
+> `getDefaultStyle()` (layered under every fold; untouched cells covered
+> by a full-width column style that rides the StreamWriter). 5 bridge
+> functions added (43 exports). Verified: 6 new Go tests, 10 new shim
+> tests (74 total), smoke extended by 4 checks — SMOKE PASS in Docker.
+
 **Wave 4.3 — structure editing**
 
 | Item | Approach | Effort |

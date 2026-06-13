@@ -176,6 +176,12 @@ class Worksheet
     public function readCell(string $coordinate, int $mode): mixed
     {
         $this->flush();
+        if (($filter = $this->parent->getReadFilter()) !== null) {
+            [$col, $row] = Coordinate::indexesFromString($coordinate);
+            if (!$filter->readCell(Coordinate::stringFromColumnIndex($col), $row, $this->title)) {
+                return null;
+            }
+        }
 
         return Native::getCell($this->parent->getHandle(), $this->title, $coordinate, $mode);
     }
@@ -203,6 +209,7 @@ class Worksheet
     private function collectRows(int $startRow, int $endRow, int $startCol, ?int $endCol, mixed $nullValue, bool $formatData, bool $returnCellRef, bool $calc = false): array
     {
         $handle = $this->parent->getHandle();
+        $filter = $this->parent->getReadFilter();
         $out = [];
         $row = $startRow;
         while ($row <= $endRow) {
@@ -215,6 +222,10 @@ class Worksheet
                 $last = $endCol ?? \max(\count($cols), 1);
                 for ($c = $startCol; $c <= $last; ++$c) {
                     $v = $cols[$c - 1] ?? null;
+                    if ($filter !== null && $v !== null && $v !== ''
+                        && !$filter->readCell(Coordinate::stringFromColumnIndex($c), $rowNum, $this->title)) {
+                        $v = null;
+                    }
                     if ($v === null || $v === '') {
                         $v = $nullValue;
                     } elseif (!$formatData && \is_string($v) && \is_numeric($v) && !\str_starts_with($v, '=')) {
@@ -363,6 +374,8 @@ class Worksheet
         return new RowDimension($this, $row);
     }
 
+    private string $autoFilterRange = '';
+
     public function setAutoFilter(string|array $range): static
     {
         if (\is_array($range)) {
@@ -371,7 +384,44 @@ class Worksheet
                 $range
             ));
         }
+        $this->autoFilterRange = $range;
         Native::autoFilter($this->parent->getHandle(), $this->title, $range);
+
+        return $this;
+    }
+
+    public function getAutoFilter(): AutoFilter
+    {
+        return new AutoFilter($this);
+    }
+
+    /** @internal the range set this session (loaded files are not introspected) */
+    public function autoFilterRange(): string
+    {
+        return $this->autoFilterRange;
+    }
+
+    public function getRowIterator(int $startRow = 1, ?int $endRow = null): RowIterator
+    {
+        $this->flush();
+
+        return new RowIterator($this, $startRow, $endRow);
+    }
+
+    public function getColumnIterator(string $startColumn = 'A', ?string $endColumn = null): ColumnIterator
+    {
+        $this->flush();
+
+        return new ColumnIterator($this, $startColumn, $endColumn);
+    }
+
+    /** Copies a style (its native state for attached styles) onto a range. */
+    public function duplicateStyle(Style $style, string $range): static
+    {
+        $spec = $style->describe();
+        if ($spec !== []) {
+            Native::applyStyle($this->parent->getHandle(), $this->title, $range, $spec);
+        }
 
         return $this;
     }

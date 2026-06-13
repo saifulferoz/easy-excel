@@ -252,6 +252,36 @@ final class Native
         return self::unwrap(\easy_excel_get_merges($handle, $sheet)) ?? [];
     }
 
+    /** @return array<string, array<string, mixed>> effective style spec for a cell */
+    public static function getStyle(int $handle, string $sheet, string $cell): array
+    {
+        return \json_decode((string) self::unwrap(\easy_excel_get_style($handle, $sheet, $cell)), true) ?: [];
+    }
+
+    /** @return list<array{sqref: string, spec: array<string, mixed>}> */
+    public static function getValidations(int $handle, string $sheet): array
+    {
+        return \json_decode((string) self::unwrap(\easy_excel_get_validations($handle, $sheet)), true) ?: [];
+    }
+
+    /** @return array<string, list<array<string, mixed>>> rules keyed by range */
+    public static function getConditionals(int $handle, string $sheet): array
+    {
+        return \json_decode((string) self::unwrap(\easy_excel_get_conditionals($handle, $sheet)), true) ?: [];
+    }
+
+    /** @return list<array{name: string, refersTo: string, scope: string}> */
+    public static function getDefinedNames(int $handle): array
+    {
+        return \json_decode((string) self::unwrap(\easy_excel_get_defined_names($handle)), true) ?: [];
+    }
+
+    /** @param array<string, mixed> $spec workbook default style */
+    public static function setDefaultStyle(int $handle, array $spec): void
+    {
+        self::check(\easy_excel_set_default_style($handle, \json_encode($spec, \JSON_THROW_ON_ERROR)));
+    }
+
     public static function saveCsv(
         int $handle,
         string $path,

@@ -65,22 +65,24 @@ type sheetState struct {
 	prePanes   *excelize.Panes
 	preMerges  [][2]string
 	pending    []pendingOp
+	preDefault bool // workbook default style awaits the StreamWriter
 }
 
 // Workbook wraps one excelize file plus per-sheet streaming state.
 // All methods are safe for concurrent use; a single mutex confines the
 // workbook to one operation at a time (PLAN.md §7.4).
 type Workbook struct {
-	mu       sync.Mutex
-	f        *excelize.File
-	sheets   map[string]*sheetState
-	filters  map[string]string // sheet → auto-filter ref injected at save
-	gate     *limits.Gate
-	policy   *exio.Policy
-	styles   styleInterner
-	estBytes int64
-	degraded bool
-	closed   bool
+	mu          sync.Mutex
+	f           *excelize.File
+	sheets      map[string]*sheetState
+	filters     map[string]string // sheet → auto-filter ref injected at save
+	defaultSpec compat.StyleSpec  // workbook default style (getDefaultStyle)
+	gate        *limits.Gate
+	policy      *exio.Policy
+	styles      styleInterner
+	estBytes    int64
+	degraded    bool
+	closed      bool
 }
 
 // Env wires the process-wide gate and path policy into workbooks.
@@ -217,7 +219,15 @@ func (w *Workbook) AddSheet(name string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	w.sheets[name] = &sheetState{eligible: !w.degraded, dimsKnown: true}
+	st := &sheetState{eligible: !w.degraded, dimsKnown: true}
+	if w.defaultSpec != nil {
+		if st.eligible {
+			st.preDefault = true
+		} else if err := w.applyDefaultColStyle(name); err != nil {
+			return 0, err
+		}
+	}
+	w.sheets[name] = st
 	return idx, nil
 }
 
@@ -367,7 +377,7 @@ func (w *Workbook) streamRows(sheet string, st *sheetState, startRow, startCol i
 		if err != nil {
 			return err
 		}
-		if err := applyPreOps(sw, st); err != nil {
+		if err := w.applyPreOps(sw, st); err != nil {
 			return err
 		}
 		st.sw = sw

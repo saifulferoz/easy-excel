@@ -461,6 +461,93 @@ function easy_excel_get_merges(int $handle, string $sheet): array
     return [\array_keys($merges), null];
 }
 
+function easy_excel_get_style(int $handle, string $sheet, string $cell): array
+{
+    // fold every apply_style / set_number_format call whose range contains
+    // the cell, in order — close enough to the Go fold for shim tests
+    [$col, $row] = \EasyExcel\Compat\Cell\Coordinate::indexesFromString($cell);
+    $contains = static function (string $range) use ($col, $row): bool {
+        if (\preg_match('/^[A-Z]+(:[A-Z]+)?$/', $range)) { // full column(s)
+            $parts = \explode(':', $range);
+            $c1 = \EasyExcel\Compat\Cell\Coordinate::columnIndexFromString($parts[0]);
+            $c2 = \EasyExcel\Compat\Cell\Coordinate::columnIndexFromString($parts[1] ?? $parts[0]);
+
+            return $col >= \min($c1, $c2) && $col <= \max($c1, $c2);
+        }
+        [[$c1, $r1], [$c2, $r2]] = \EasyExcel\Compat\Cell\Coordinate::rangeBoundaries($range);
+
+        return $col >= $c1 && $col <= $c2 && $row >= $r1 && $row <= $r2;
+    };
+    $merge = static function (array $base, array $patch) use (&$merge): array {
+        foreach ($patch as $k => $v) {
+            $base[$k] = \is_array($v) && \is_array($base[$k] ?? null) ? $merge($base[$k], $v) : $v;
+        }
+
+        return $base;
+    };
+    $spec = [];
+    foreach (EasyExcelFake::$log as [$fn, $args]) {
+        if ($fn === 'set_default_style' && $args[0] === $handle) {
+            $spec = $merge($args[1], $spec);
+        }
+        if ($fn === 'apply_style' && $args[0] === $handle && $args[1] === $sheet && $contains($args[2])) {
+            $spec = $merge($spec, $args[3]);
+        }
+        if ($fn === 'set_number_format' && $args[0] === $handle && $args[1] === $sheet && $contains($args[2])) {
+            $spec = $merge($spec, ['numberFormat' => ['formatCode' => $args[3]]]);
+        }
+    }
+
+    return [\json_encode($spec), null];
+}
+
+function easy_excel_get_validations(int $handle, string $sheet): array
+{
+    $out = [];
+    foreach (EasyExcelFake::calls('set_validation') as [$fn, $args]) {
+        if ($args[0] === $handle && $args[1] === $sheet) {
+            $out[] = ['sqref' => $args[2], 'spec' => $args[3]];
+        }
+    }
+
+    return [\json_encode($out), null];
+}
+
+function easy_excel_get_conditionals(int $handle, string $sheet): array
+{
+    $out = [];
+    foreach (EasyExcelFake::calls('set_conditional') as [$fn, $args]) {
+        if ($args[0] === $handle && $args[1] === $sheet) {
+            $out[$args[2]] = $args[3];
+        }
+    }
+
+    return [\json_encode($out), null];
+}
+
+function easy_excel_get_defined_names(int $handle): array
+{
+    $out = [];
+    foreach (EasyExcelFake::calls('defined_name') as [$fn, $args]) {
+        if ($args[0] === $handle) {
+            $out[] = ['name' => $args[1], 'refersTo' => $args[2], 'scope' => $args[3]];
+        }
+    }
+
+    return [\json_encode($out), null];
+}
+
+function easy_excel_set_default_style(int $handle, string $styleJson): ?string
+{
+    $spec = \json_decode($styleJson, true);
+    if (!\is_array($spec)) {
+        return 'fake: default style is not valid JSON';
+    }
+    EasyExcelFake::$log[] = ['set_default_style', [$handle, $spec]];
+
+    return null;
+}
+
 function easy_excel_stats(): array
 {
     return [\count(EasyExcelFake::$store), 0];

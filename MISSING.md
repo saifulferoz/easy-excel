@@ -13,9 +13,9 @@ deleted here.
 
 ## Found by the ERP report probe (`data/public/index.php`)
 
-| API | Status / workaround |
-|---|---|
-| `Spreadsheet::getDefaultStyle()` | Workbook-wide default font/style not supported (planned, wave 4.2). Workaround: apply the style to the used range. |
+Closed by wave 4.2 (2026-06-13): `getDefaultStyle()`, row/column iterators,
+`IReadFilter`, style read-back from loaded files + `duplicateStyle`,
+validation/conditional/defined-name/auto-filter getters.
 
 Closed by wave 4.1 (2026-06-13): custom value binders, document properties
 (`getProperties()`; `setManager` is kept PHP-side only — excelize has no
@@ -27,19 +27,13 @@ and calculation-cache no-ops.
 ## Known gaps (by area)
 
 **Reading / introspection**
-- Style read-back from loaded files (`getFont()->getBold()` etc. return what
-  was set on that PHP object, not stylesheet state — COMPAT.md §14)
-- Auto-filter/validation/conditional getters (the merge getter landed in
-  wave 4.1)
-- `getRowIterator()` / `getColumnIterator()` / `getCellCollection()`
-  (chunked `toArray` covers bulk reads)
-- `Reader\IReadFilter` with PHP callbacks
-- Defined-name listing (`getDefinedNames()`)
+- `getCellCollection()` / existing-cells-only iteration flags
+- Auto-filter **column rule** introspection (range getter landed in 4.2)
 
 **Structure editing**
 - `insertNewRowBefore` / `removeRow` / `insertNewColumnBefore` /
   `removeColumn`
-- `duplicateStyle`, `removeConditionalStyles`
+- `removeConditionalStyles`
 - Sheet copy/clone (`Spreadsheet::addExternalSheet`, `Worksheet::copy`),
   `createSheet($index)` at arbitrary positions
 - Sheet views: gridline toggle, tab color, zoom, right-to-left

@@ -245,6 +245,40 @@ check($r6->getActiveSheet()->getMergeCells() === [], 'unmerge removed the merge'
 $r6->disconnectWorksheets();
 @\unlink($enc);
 
+// --- wave 4.2: read-back, iterators, default style -------------------------------
+$s7 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+$ws7 = $s7->getActiveSheet();
+$s7->getDefaultStyle()->getFont()->setName('Arial')->setSize(9);
+$ws7->getStyle('A1:B1')->getFont()->setBold(true);
+$ws7->getStyle('B2:B3')->getNumberFormat()->setFormatCode('0.00%');
+$ws7->fromArray([['Name', 'Rate'], ['a', 0.5], ['b', 0.25]]);
+
+check($ws7->getStyle('A1')->getFont()->getBold() === true
+    && $ws7->getStyle('A1')->getFont()->getName() === 'Arial',
+    'style read-back mid-write (no degrade), default layered');
+check($ws7->getStyle('B2')->getNumberFormat()->getFormatCode() === '0.00%', 'format read-back');
+
+$iterated = [];
+foreach ($ws7->getRowIterator(2) as $rowNum => $row7) {
+    foreach ($row7->getCellIterator('A', 'A') as $cell7) {
+        $iterated[] = $cell7->getValue();
+    }
+}
+check($iterated === ['a', 'b'], 'row/cell iterators');
+
+$w42 = \sys_get_temp_dir() . '/smoke-w42.xlsx';
+\PhpOffice\PhpSpreadsheet\IOFactory::createWriter($s7, 'Xlsx')->save($w42);
+$s7->disconnectWorksheets();
+
+$r7 = \PhpOffice\PhpSpreadsheet\IOFactory::load($w42);
+$rs7 = $r7->getActiveSheet();
+check($rs7->getStyle('A1')->getFont()->getBold() === true
+    && $rs7->getStyle('A1')->getFont()->getName() === 'Arial'
+    && $rs7->getStyle('C9')->getFont()->getName() === 'Arial',
+    'loaded-file style read-back incl. default style on untouched cells');
+$r7->disconnectWorksheets();
+@\unlink($w42);
+
 // --- csv + load control surface ------------------------------------------------
 $s2 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
 $s2->getActiveSheet()->fromArray([['a', '-x', 'b,c']]);

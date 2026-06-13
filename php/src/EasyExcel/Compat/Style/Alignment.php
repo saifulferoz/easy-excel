@@ -22,9 +22,9 @@ class Alignment
     public const VERTICAL_JUSTIFY = 'justify';
     public const VERTICAL_DISTRIBUTED = 'distributed';
 
-    private string $horizontal = self::HORIZONTAL_GENERAL;
-    private string $vertical = self::VERTICAL_BOTTOM;
-    private bool $wrapText = false;
+    private ?string $horizontal = null;
+    private ?string $vertical = null;
+    private ?bool $wrapText = null;
     private bool $shrinkToFit = false;
     private int $textRotation = 0;
     private int $indent = 0;
@@ -83,17 +83,20 @@ class Alignment
 
     public function getHorizontal(): string
     {
-        return $this->horizontal;
+        return $this->horizontal
+            ?? (string) ($this->style->nativeComponent('alignment')['horizontal'] ?? self::HORIZONTAL_GENERAL);
     }
 
     public function getVertical(): string
     {
-        return $this->vertical;
+        return $this->vertical
+            ?? (string) ($this->style->nativeComponent('alignment')['vertical'] ?? self::VERTICAL_BOTTOM);
     }
 
     public function getWrapText(): bool
     {
-        return $this->wrapText;
+        return $this->wrapText
+            ?? (bool) ($this->style->nativeComponent('alignment')['wrapText'] ?? false);
     }
 
     public function getShrinkToFit(): bool

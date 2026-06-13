@@ -99,7 +99,22 @@ class Cell
 
     public function getDataValidation(): DataValidation
     {
-        return (new DataValidation())->bind($this->worksheet, $this->coordinate);
+        $dv = new DataValidation();
+        // hydrate from an existing rule covering this cell (loaded files and
+        // rules set earlier this session)
+        $handle = $this->worksheet->getParent()->getHandle();
+        [$col, $row] = Coordinate::indexesFromString($this->coordinate);
+        foreach (\EasyExcel\Native::getValidations($handle, $this->worksheet->getTitle()) as $entry) {
+            foreach (\explode(' ', (string) $entry['sqref']) as $ref) {
+                [[$c1, $r1], [$c2, $r2]] = Coordinate::rangeBoundaries($ref);
+                if ($col >= $c1 && $col <= $c2 && $row >= $r1 && $row <= $r2) {
+                    $dv->hydrate($entry['spec']);
+                    break 2;
+                }
+            }
+        }
+
+        return $dv->bind($this->worksheet, $this->coordinate);
     }
 
     public function setDataValidation(?DataValidation $dataValidation): static

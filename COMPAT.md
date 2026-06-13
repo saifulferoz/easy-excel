@@ -59,6 +59,16 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Merges | `unmergeCells`, `getMergeCells()` | reading merges degrades a streaming sheet, like other reads |
 | Calculation | `Calculation::getInstance()` cache controls | accepted no-ops: perf hints that cannot change output |
 
+## Supported (Phase 4.2 — reading & iteration)
+
+| Area | API | Notes |
+|---|---|---|
+| Iterators | `getRowIterator`, `getColumnIterator`, `Row::getCellIterator`, `Column::getCellIterator` (+`Row`/`Column`/`RowCellIterator`/`ColumnCellIterator`) | cells are coordinate facades reading per cell; `toArray`/`rangeToArray` remain the bulk fast path |
+| Read filters | `Reader\IReadFilter`, `Reader\Xlsx::setReadFilter` | applied during chunk assembly: filtered cells read as null (PhpSpreadsheet never loads them — observable difference only via memory, which is constant here anyway) |
+| Style read-back | `getStyle()` getters reflect applied styles **and loaded files** (font, fill type, alignment, number format); `Worksheet::duplicateStyle` | streaming sheets answer from the style log — read-back never degrades a workbook mid-write; loaded files reverse-translate the stylesheet |
+| Default style | `Spreadsheet::getDefaultStyle()` | layered under every style fold; untouched cells get it via a full-width column style (streams through the StreamWriter) |
+| Introspection | `Cell::getDataValidation()` hydrates covering rules, `getConditionalStyles()` falls back to the file's rules, `Spreadsheet::getDefinedNames()`, `Worksheet::getAutoFilter()` (session range) | validations/conditionals on streaming sheets are answered from the pending queue |
+
 ## Documented divergences
 
 1. **`toArray(formatData: false)` types** — values come back from excelize as
@@ -108,8 +118,10 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 13. **Full-column styles** (`getStyle('C')`) on streamed sheets style every
     written cell; cells never written in that column stay default (the column
     style is also recorded for files saved without streaming).
-14. **Style read-back** — `getFont()->getBold()` etc. return what was set on
-    that PHP style object, not the stylesheet state of a loaded file.
+14. **Style read-back** (updated in 4.2) — getters return local writes first,
+    then the effective stylesheet state (loaded files included). Range styles
+    read from the range's top-left cell; borders/protection getters remain
+    local-only.
 15. **Comment rich text** — comments are plain text; `Run::getFont()` throws.
 16. **Auto-filter on streamed sheets** — when the auto-filter is the only
     non-streamable op, the `<autoFilter>` element is injected into the saved

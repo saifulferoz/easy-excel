@@ -157,6 +157,44 @@ class Spreadsheet
         return $this->properties ??= new Document\Properties($this);
     }
 
+    private ?Style\Style $defaultStyle = null;
+
+    /** Workbook default style, layered under everything and applied to untouched cells. */
+    public function getDefaultStyle(): Style\Style
+    {
+        return $this->defaultStyle ??= Style\Style::defaultFor($this);
+    }
+
+    /** @return array<string, NamedRange> keyed by upper-cased name, PhpSpreadsheet shape */
+    public function getDefinedNames(): array
+    {
+        $out = [];
+        foreach (Native::getDefinedNames($this->getHandle()) as $dn) {
+            $out[\strtoupper($dn['name'])] = new NamedRange(
+                $dn['name'],
+                $dn['scope'] !== '' ? $this->getSheetByName($dn['scope']) : null,
+                $dn['refersTo'],
+                $dn['scope'] !== '',
+            );
+        }
+
+        return $out;
+    }
+
+    private ?Reader\IReadFilter $readFilter = null;
+
+    /** @internal set by Reader\Xlsx; consulted by Worksheet reads */
+    public function setReadFilter(?Reader\IReadFilter $filter): void
+    {
+        $this->readFilter = $filter;
+    }
+
+    /** @internal */
+    public function getReadFilter(): ?Reader\IReadFilter
+    {
+        return $this->readFilter;
+    }
+
     public function addNamedRange(NamedRange $namedRange): bool
     {
         Native::definedName(

@@ -511,6 +511,55 @@ func easy_excel_get_merges(handle int64, sheet *C.zend_string) unsafe.Pointer {
 	return pair(list, nil)
 }
 
+//export_php:function easy_excel_get_style(int $handle, string $sheet, string $cell): array
+func easy_excel_get_style(handle int64, sheet *C.zend_string, cell *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return pair(nil, err)
+	}
+	spec, err := wb.GetStyleSpec(goStr(sheet), goStr(cell))
+	return pair(spec, err)
+}
+
+//export_php:function easy_excel_get_validations(int $handle, string $sheet): array
+func easy_excel_get_validations(handle int64, sheet *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return pair(nil, err)
+	}
+	out, err := wb.ValidationsJSON(goStr(sheet))
+	return pair(out, err)
+}
+
+//export_php:function easy_excel_get_conditionals(int $handle, string $sheet): array
+func easy_excel_get_conditionals(handle int64, sheet *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return pair(nil, err)
+	}
+	out, err := wb.ConditionalsJSON(goStr(sheet))
+	return pair(out, err)
+}
+
+//export_php:function easy_excel_get_defined_names(int $handle): array
+func easy_excel_get_defined_names(handle int64) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return pair(nil, err)
+	}
+	out, err := wb.DefinedNamesJSON()
+	return pair(out, err)
+}
+
+//export_php:function easy_excel_set_default_style(int $handle, string $styleJson): ?string
+func easy_excel_set_default_style(handle int64, styleJson *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return errOnly(err)
+	}
+	return errOnly(wb.SetDefaultStyle(goStr(styleJson)))
+}
+
 //export_php:function easy_excel_save_csv(int $handle, string $path, string $sheet, string $delimiter, bool $crlf, bool $bom, bool $guardFormulas): ?string
 func easy_excel_save_csv(handle int64, path *C.zend_string, sheet *C.zend_string, delimiter *C.zend_string, crlf bool, bom bool, guard bool) unsafe.Pointer {
 	wb, err := workbook(handle)

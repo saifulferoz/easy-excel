@@ -31,7 +31,7 @@ class NumberFormat
     public const FORMAT_CURRENCY_EUR = '€#,##0.00';
     public const FORMAT_ACCOUNTING_USD = '_("$"* #,##0.00_);_("$"* \(#,##0.00\);_("$"* "-"??_);_(@_)';
 
-    private string $formatCode = self::FORMAT_GENERAL;
+    private ?string $formatCode = null;
 
     public function __construct(
         private ?Worksheet $worksheet,
@@ -63,6 +63,19 @@ class NumberFormat
 
     public function getFormatCode(): string
     {
-        return $this->formatCode;
+        if ($this->formatCode !== null) {
+            return $this->formatCode;
+        }
+        if ($this->worksheet !== null) {
+            $spec = Native::getStyle(
+                $this->worksheet->getParent()->getHandle(),
+                $this->worksheet->getTitle(),
+                \explode(':', $this->range)[0],
+            );
+
+            return (string) ($spec['numberFormat']['formatCode'] ?? self::FORMAT_GENERAL);
+        }
+
+        return self::FORMAT_GENERAL;
     }
 }

@@ -124,6 +124,27 @@ class Conditional
         return $this;
     }
 
+    /** @internal hydrate from the extension's read-back shape (wave 4.2) */
+    public static function fromSpec(array $spec): self
+    {
+        $rule = new self();
+        $rule->conditionType = (string) ($spec['type'] ?? self::CONDITION_NONE);
+        $rule->operatorType = (string) ($spec['operator'] ?? self::OPERATOR_NONE);
+        $rule->conditions = \array_values((array) ($spec['conditions'] ?? []));
+        $rule->stopIfTrue = (bool) ($spec['stopIfTrue'] ?? false);
+        if (\is_array($spec['style'] ?? null)) {
+            $rule->getStyle()->applyFromArray($spec['style']);
+        }
+        if (\is_array($spec['colorScale'] ?? null)) {
+            $rule->colorScale = $spec['colorScale'];
+        }
+        if (isset($spec['dataBar']['color'])) {
+            $rule->dataBarColor = (string) $spec['dataBar']['color'];
+        }
+
+        return $rule;
+    }
+
     /** @internal the rule in the shape extension/compat/conditional.go expects */
     public function toSpec(): array
     {

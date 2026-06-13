@@ -27,6 +27,12 @@ class Style
     /** @var array<string, mixed> collected spec when detached (conditional styles) */
     private array $collected = [];
 
+    /** non-null when this Style targets the workbook default (getDefaultStyle) */
+    private ?\EasyExcel\Compat\Spreadsheet $defaultTarget = null;
+
+    /** @var array<string, mixed>|null lazily fetched effective spec (read-back) */
+    private ?array $nativeSpec = null;
+
     public function __construct(private ?Worksheet $worksheet, private string $range)
     {
     }
@@ -40,10 +46,62 @@ class Style
         return new self(null, '');
     }
 
+    /** @internal the workbook-default style behind Spreadsheet::getDefaultStyle() */
+    public static function defaultFor(\EasyExcel\Compat\Spreadsheet $spreadsheet): self
+    {
+        $style = new self(null, '');
+        $style->defaultTarget = $spreadsheet;
+
+        return $style;
+    }
+
     /** @internal @return array<string, mixed> */
     public function getCollectedSpec(): array
     {
         return $this->collected;
+    }
+
+    /**
+     * @internal one component of the effective spec: local writes win, then
+     * the native stylesheet (read-back of loaded files), then defaults
+     *
+     * @return array<string, mixed>
+     */
+    public function nativeComponent(string $component): array
+    {
+        if ($this->worksheet === null) {
+            return \is_array($this->collected[$component] ?? null) ? $this->collected[$component] : [];
+        }
+        if ($this->nativeSpec === null) {
+            $topLeft = \explode(':', $this->range)[0];
+            $this->nativeSpec = Native::getStyle(
+                $this->worksheet->getParent()->getHandle(),
+                $this->worksheet->getTitle(),
+                $topLeft,
+            );
+        }
+        $section = $this->nativeSpec[$component] ?? [];
+
+        return \is_array($section) ? $section : [];
+    }
+
+    /**
+     * @internal full effective spec of this style (duplicateStyle source)
+     *
+     * @return array<string, mixed>
+     */
+    public function describe(): array
+    {
+        if ($this->worksheet === null) {
+            return $this->collected;
+        }
+        $topLeft = \explode(':', $this->range)[0];
+
+        return Native::getStyle(
+            $this->worksheet->getParent()->getHandle(),
+            $this->worksheet->getTitle(),
+            $topLeft,
+        );
     }
 
     public function getFont(): Font
@@ -112,8 +170,17 @@ class Style
         if ($this->worksheet === null) {
             return [];
         }
+        $session = $this->worksheet->recallConditionalStyles($this->range);
+        if ($session !== []) {
+            return $session;
+        }
+        // loaded files: hydrate from the native conditional formats
+        $all = Native::getConditionals(
+            $this->worksheet->getParent()->getHandle(),
+            $this->worksheet->getTitle(),
+        );
 
-        return $this->worksheet->recallConditionalStyles($this->range);
+        return \array_map(Conditional::fromSpec(...), $all[$this->range] ?? []);
     }
 
     /** @param array<string, mixed> $styleArray PhpSpreadsheet's nested style array */
@@ -139,6 +206,13 @@ class Style
     private function send(array $spec): void
     {
         if ($spec === []) {
+            return;
+        }
+        $this->nativeSpec = null; // read-back cache is stale after any write
+        if ($this->defaultTarget !== null) {
+            $this->collected = self::deepMerge($this->collected, $spec);
+            Native::setDefaultStyle($this->defaultTarget->getHandle(), $this->collected);
+
             return;
         }
         if ($this->worksheet === null) {

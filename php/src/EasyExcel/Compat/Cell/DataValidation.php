@@ -62,6 +62,26 @@ class DataValidation
         return $this;
     }
 
+    /** @internal populate from the extension's read-back spec, without pushing */
+    public function hydrate(array $spec): static
+    {
+        $this->type = (string) ($spec['type'] ?? self::TYPE_NONE);
+        $this->operator = (string) ($spec['operator'] ?: self::OPERATOR_BETWEEN);
+        $this->formula1 = (string) ($spec['formula1'] ?? '');
+        $this->formula2 = (string) ($spec['formula2'] ?? '');
+        $this->allowBlank = (bool) ($spec['allowBlank'] ?? false);
+        $this->showDropDown = (bool) ($spec['showDropDown'] ?? false);
+        $this->showInputMessage = (bool) ($spec['showInputMessage'] ?? false);
+        $this->showErrorMessage = (bool) ($spec['showErrorMessage'] ?? false);
+        $this->errorStyle = (string) ($spec['errorStyle'] ?: self::STYLE_STOP);
+        $this->errorTitle = (string) ($spec['errorTitle'] ?? '');
+        $this->error = (string) ($spec['error'] ?? '');
+        $this->promptTitle = (string) ($spec['promptTitle'] ?? '');
+        $this->prompt = (string) ($spec['prompt'] ?? '');
+
+        return $this;
+    }
+
     /** @internal full state in the shape extension/compat/validation.go expects */
     public function toSpec(): array
     {

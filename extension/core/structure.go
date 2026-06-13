@@ -137,7 +137,7 @@ func (st *sheetState) random() bool {
 }
 
 func (st *sheetState) hasPendingWork() bool {
-	if len(st.preWidths) > 0 || st.prePanes != nil || len(st.preMerges) > 0 || len(st.pending) > 0 {
+	if len(st.preWidths) > 0 || st.prePanes != nil || len(st.preMerges) > 0 || len(st.pending) > 0 || st.preDefault {
 		return true
 	}
 	for i := range st.styleLog {
@@ -363,9 +363,19 @@ func (w *Workbook) queueOp(sheet string, op pendingOp) error {
 
 // --- stream-side application ---------------------------------------------------
 
-// applyPreOps pushes queued widths, panes and merges through a fresh
-// StreamWriter (all of which it only accepts before the first row).
-func applyPreOps(sw *excelize.StreamWriter, st *sheetState) error {
+// applyPreOps pushes queued widths, panes, merges and the workbook default
+// style through a fresh StreamWriter (all only accepted before the first row).
+func (w *Workbook) applyPreOps(sw *excelize.StreamWriter, st *sheetState) error {
+	if st.preDefault && w.defaultSpec != nil {
+		id, err := w.styles.specID(w.f, w.defaultSpec)
+		if err != nil {
+			return err
+		}
+		if err := sw.SetColStyle(1, 16384, id); err != nil {
+			return err
+		}
+		st.preDefault = false
+	}
 	for _, cw := range st.preWidths {
 		if err := sw.SetColWidth(cw.c1, cw.c2, cw.width); err != nil {
 			return err
@@ -450,7 +460,7 @@ func (s *inlineStyler) styleID(row, col int) (int, error) {
 		if cached, ok := s.cache[mask]; ok {
 			id = cached
 		} else {
-			merged := compat.StyleSpec{}
+			merged := s.w.foldBase()
 			for bit, i := range s.indices {
 				if mask&(1<<uint(bit)) != 0 {
 					merged = compat.MergeSpec(merged, s.st.styleLog[i].spec)
@@ -494,6 +504,12 @@ func (w *Workbook) replayAll() error {
 }
 
 func (w *Workbook) replaySheet(sheet string, st *sheetState) error {
+	if st.preDefault && w.defaultSpec != nil {
+		if err := w.applyDefaultColStyle(sheet); err != nil {
+			return err
+		}
+		st.preDefault = false
+	}
 	for _, cw := range st.preWidths {
 		if err := w.fSetColWidth(sheet, cw); err != nil {
 			return err
@@ -640,7 +656,7 @@ func slicesEqual(a, b []uint64) bool {
 }
 
 func (w *Workbook) applyMaskRect(sheet string, st *sheetState, mask uint64, r1, c1, r2, c2 int) error {
-	merged := compat.StyleSpec{}
+	merged := w.foldBase()
 	for j := 0; j < 64; j++ {
 		if mask&(1<<uint(j)) != 0 {
 			merged = compat.MergeSpec(merged, st.styleLog[j].spec)
@@ -727,7 +743,7 @@ func intersectRects(a, b *styleEntry) (r1, c1, r2, c2 int, ok bool) {
 // applyFoldedRect sets the rect's style to the merge of every entry up to
 // upTo (inclusive) that contains the rect.
 func (w *Workbook) applyFoldedRect(sheet string, st *sheetState, upTo, r1, c1, r2, c2 int) error {
-	merged := compat.StyleSpec{}
+	merged := w.foldBase()
 	for j := 0; j <= upTo; j++ {
 		if p := &st.styleLog[j]; p.containsRect(r1, c1, r2, c2) {
 			merged = compat.MergeSpec(merged, p.spec)

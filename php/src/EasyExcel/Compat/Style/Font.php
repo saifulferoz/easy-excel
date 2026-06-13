@@ -13,12 +13,12 @@ class Font
     public const UNDERLINE_SINGLEACCOUNTING = 'singleAccounting';
     public const UNDERLINE_DOUBLEACCOUNTING = 'doubleAccounting';
 
-    private bool $bold = false;
-    private bool $italic = false;
-    private bool $strikethrough = false;
-    private string $underline = self::UNDERLINE_NONE;
-    private string $name = 'Calibri';
-    private float $size = 11.0;
+    private ?bool $bold = null;
+    private ?bool $italic = null;
+    private ?bool $strikethrough = null;
+    private ?string $underline = null;
+    private ?string $name = null;
+    private ?float $size = null;
     private ?Color $color = null;
 
     public function __construct(private Style $style)
@@ -84,40 +84,53 @@ class Font
         return $this;
     }
 
+    // getters: local writes win, then the native stylesheet (read-back)
+
     public function getBold(): bool
     {
-        return $this->bold;
+        return $this->bold ?? (bool) ($this->native('bold') ?? false);
     }
 
     public function getItalic(): bool
     {
-        return $this->italic;
+        return $this->italic ?? (bool) ($this->native('italic') ?? false);
     }
 
     public function getStrikethrough(): bool
     {
-        return $this->strikethrough;
+        return $this->strikethrough ?? (bool) ($this->native('strikethrough') ?? false);
     }
 
     public function getUnderline(): string
     {
-        return $this->underline;
+        return $this->underline ?? (string) ($this->native('underline') ?? self::UNDERLINE_NONE);
     }
 
     public function getName(): string
     {
-        return $this->name;
+        return $this->name ?? (string) ($this->native('name') ?? 'Calibri');
     }
 
     public function getSize(): float
     {
-        return $this->size;
+        return $this->size ?? (float) ($this->native('size') ?? 11.0);
     }
 
     public function getColor(): Color
     {
-        return ($this->color ??= new Color())->bind(
+        if ($this->color === null) {
+            $native = $this->native('color');
+            $argb = \is_array($native) ? ($native['argb'] ?? (isset($native['rgb']) ? 'FF' . $native['rgb'] : null)) : null;
+            $this->color = new Color($argb ?? Color::COLOR_BLACK);
+        }
+
+        return $this->color->bind(
             fn (string $argb) => $this->style->mergeComponent('font', ['color' => ['argb' => $argb]])
         );
+    }
+
+    private function native(string $key): mixed
+    {
+        return $this->style->nativeComponent('font')[$key] ?? null;
     }
 }
