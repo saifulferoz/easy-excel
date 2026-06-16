@@ -95,28 +95,3 @@ COPY php/ /opt/easy-excel/php/
 LABEL org.opencontainers.image.title="frankenphp-easy-excel" \
       org.opencontainers.image.description="FrankenPHP with the easy-excel (Go/excelize) spreadsheet extension" \
       org.opencontainers.image.source="https://github.com/xiidea/easy-excel"
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-	acl \
-	file \
-	gettext \
-	&& rm -rf /var/lib/apt/lists/*
-
-RUN set -eux; \
-	install-php-extensions \
-		redis \
-        mongodb \
-        pdo_pgsql \
-        pdo_mysql \
-        bcmath \
-            apcu \
-            gd \
-            intl \
-            opcache \
-            zip \
-            igbinary \
-            yaml \
-            xsl \
-            gettext \
-            sockets \
-	;
