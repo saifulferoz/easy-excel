@@ -8,7 +8,7 @@ use EasyExcel\Compat\Exception;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Native;
 
-class Xlsx
+class Xlsx extends BaseWriter
 {
     private string $password = '';
 
@@ -29,16 +29,20 @@ class Xlsx
     }
 
     /**
-     * Saves to a filesystem path or a php:// stream. Streams go through a
-     * temp file because the extension writes files directly (the xlsx
-     * container is already deflated — never double-compress it, PLAN.md B10).
+     * Saves to a filesystem path, a php:// stream, or an open resource. Streams
+     * go through a temp file because the extension writes files directly (the
+     * xlsx container is already deflated — never double-compress it, PLAN.md
+     * B10).
+     *
+     * @param resource|string $filename
      */
-    public function save(string $filename, int $flags = 0): void
+    public function save($filename, int $flags = 0): void
     {
+        $this->processFlags($flags);
         $this->spreadsheet->flushAll();
         $handle = $this->spreadsheet->getHandle();
 
-        if (!\str_starts_with($filename, 'php://')) {
+        if (\is_string($filename) && !\str_starts_with($filename, 'php://')) {
             Native::saveXlsx($handle, $filename, $this->password);
 
             return;
@@ -50,14 +54,11 @@ class Xlsx
         }
         try {
             Native::saveXlsx($handle, $tmp, $this->password);
-            $out = \fopen($filename, 'wb');
-            if ($out === false) {
-                throw new Exception("Could not open $filename for writing");
-            }
+            $this->openFileHandle($filename);
             $in = \fopen($tmp, 'rb');
-            \stream_copy_to_stream($in, $out);
+            \stream_copy_to_stream($in, $this->fileHandle);
             \fclose($in);
-            \fclose($out);
+            $this->maybeCloseFileHandle();
         } finally {
             @\unlink($tmp);
         }

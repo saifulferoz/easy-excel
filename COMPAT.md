@@ -14,9 +14,11 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Coordinate | `columnIndexFromString`, `stringFromColumnIndex`, `coordinateFromString`, `indexesFromString`, `rangeBoundaries`, `rangeDimension`, `splitRange` | pure PHP port |
 | DataType | all `TYPE_*` constants | |
 | Shared\Date | `PHPToExcel`, `dateTimeToExcel`, `timestampToExcel`, `stringToExcel`, `excelToDateTimeObject`, `excelToTimestamp`, `formattedPHPToExcel`, 1900/1904 calendars | Julian-day algorithm ported verbatim, incl. the 1900 leap-year bug |
-| IOFactory | `createWriter/Reader` (Xlsx, Csv), `load`, `identify` | |
-| Writer\Xlsx | `save` (paths and `php://` streams) | |
-| Writer\Csv | `set/getDelimiter`, `setEnclosure` (only `"`), `set/getLineEnding`, `set/getUseBOM`, `set/getSheetIndex`, `save` | plus `setSanitizeFormulas()` (easy-excel extra, opt-in OWASP guard) |
+| IOFactory | `createWriter/Reader` (Xlsx, Csv, Html), `load`, `identify` | |
+| Writer\IWriter, Writer\BaseWriter | full PhpSpreadsheet contract (`SAVE_WITH_CHARTS`/`DISABLE_PRECALCULATE_FORMULAE`, include-charts / pre-calculate / disk-caching accessors, `openFileHandle`/`processFlags`/`maybeCloseFileHandle`) | extend `BaseWriter` (or implement `IWriter`) for custom writers; the built-in writers extend it. Chart/precalc/disk-cache flags are state-only — the extension does not consume them |
+| Writer\Xlsx | `save` (paths, `php://` streams, and open resources) | |
+| Writer\Csv | `set/getDelimiter`, `setEnclosure` (only `"`), `set/getLineEnding`, `set/getUseBOM`, `set/getSheetIndex`, `save` (paths, `php://` streams, open resources) | plus `setSanitizeFormulas()` (easy-excel extra, opt-in OWASP guard) |
+| Writer\Html | `save`, `generateHtmlAll`, `generateHTMLHeader`, `generateStyles`, `generateNavigation`, `generateSheetData`, `generateHTMLFooter`, `set/getSheetIndex`, `writeAllSheets`, `set/getGenerateSheetNavigationBlock`, `set/getUseInlineCss`, `set/getEmbedImages`, `set/getImagesRoot`, `set/getLineEnding`, `getOrientation`, `setEditHtmlCallback`, plus the table/conditional/boolean knobs | **pure PHP** (works with or without the extension); renders formatted cell values into sheet tables with merged-cell row/colspans. Fine-grained per-cell styling and image embedding are not rendered — a single shared stylesheet is emitted |
 | Reader\Xlsx | `load`, `setReadDataOnly`, `canRead` | |
 | Reader\Csv | `load`, `setDelimiter`, `setEnclosure`, `setSheetIndex`, `canRead` | streams in 1k-row chunks |
 | Value binding | DefaultValueBinder semantics: numeric strings → numbers (leading-zero strings preserved), `=…` → formula, `DateTimeInterface` → Excel serial | |
@@ -224,7 +226,7 @@ php tools/compat-surface-diff.php --update-baseline=.compat-surface.json # bump 
 - PhpSpreadsheet's `Chart` object model (`PhpOffice\PhpSpreadsheet\Chart\*`):
   use the native declarative API (`Worksheet::addNativeChart`) instead
 - Workbook encryption / password-protected open
-- Readers/Writers: Ods, Xls, Html, Pdf, Slk, Gnumeric — not planned for the
+- Readers/Writers: Ods, Xls, Pdf, Slk, Gnumeric — not planned for the
   native engine. In `strict` mode (the default with the extension) these throw
   `UnsupportedApiException`; set `EASY_EXCEL_ALIAS=off` (or `fallback`) and
   install the real `phpoffice/phpspreadsheet` to handle them, or convert

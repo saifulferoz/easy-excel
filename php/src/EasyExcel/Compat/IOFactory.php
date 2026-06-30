@@ -7,6 +7,8 @@ namespace EasyExcel\Compat;
 use EasyExcel\Compat\Reader\Csv as CsvReader;
 use EasyExcel\Compat\Reader\Xlsx as XlsxReader;
 use EasyExcel\Compat\Writer\Csv as CsvWriter;
+use EasyExcel\Compat\Writer\Html as HtmlWriter;
+use EasyExcel\Compat\Writer\IWriter;
 use EasyExcel\Compat\Writer\Xlsx as XlsxWriter;
 
 abstract class IOFactory
@@ -15,12 +17,14 @@ abstract class IOFactory
     public const READER_CSV = 'Csv';
     public const WRITER_XLSX = 'Xlsx';
     public const WRITER_CSV = 'Csv';
+    public const WRITER_HTML = 'Html';
 
-    public static function createWriter(Spreadsheet $spreadsheet, string $writerType): XlsxWriter|CsvWriter
+    public static function createWriter(Spreadsheet $spreadsheet, string $writerType): IWriter
     {
         return match ($writerType) {
             self::WRITER_XLSX => new XlsxWriter($spreadsheet),
             self::WRITER_CSV => new CsvWriter($spreadsheet),
+            self::WRITER_HTML => new HtmlWriter($spreadsheet),
             default => throw new Exception(
                 "easy-excel: writer \"$writerType\" is not supported yet (COMPAT.md lists supported formats)"
             ),

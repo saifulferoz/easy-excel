@@ -8,7 +8,7 @@ use EasyExcel\Compat\Exception;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Native;
 
-class Csv
+class Csv extends BaseWriter
 {
     private string $delimiter = ',';
     private string $enclosure = '"';
@@ -91,14 +91,18 @@ class Csv
         return $this;
     }
 
-    public function save(string $filename, int $flags = 0): void
+    /**
+     * @param resource|string $filename filesystem path, php:// URL, or open stream
+     */
+    public function save($filename, int $flags = 0): void
     {
+        $this->processFlags($flags);
         $this->spreadsheet->flushAll();
         $handle = $this->spreadsheet->getHandle();
         $sheet = $this->spreadsheet->getSheet($this->sheetIndex)->getTitle();
         $crlf = $this->lineEnding === "\r\n";
 
-        if (!\str_starts_with($filename, 'php://')) {
+        if (\is_string($filename) && !\str_starts_with($filename, 'php://')) {
             Native::saveCsv($handle, $filename, $sheet, $this->delimiter, $crlf, $this->useBOM, $this->sanitizeFormulas);
 
             return;
@@ -110,14 +114,11 @@ class Csv
         }
         try {
             Native::saveCsv($handle, $tmp, $sheet, $this->delimiter, $crlf, $this->useBOM, $this->sanitizeFormulas);
-            $out = \fopen($filename, 'wb');
-            if ($out === false) {
-                throw new Exception("Could not open $filename for writing");
-            }
+            $this->openFileHandle($filename);
             $in = \fopen($tmp, 'rb');
-            \stream_copy_to_stream($in, $out);
+            \stream_copy_to_stream($in, $this->fileHandle);
             \fclose($in);
-            \fclose($out);
+            $this->maybeCloseFileHandle();
         } finally {
             @\unlink($tmp);
         }
