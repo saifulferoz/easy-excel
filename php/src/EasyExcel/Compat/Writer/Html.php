@@ -49,6 +49,8 @@ class Html extends BaseWriter
     /** @var null|callable(string):string */
     private $editHtmlCallback;
 
+    protected array $cssCache = [];
+
     public function __construct(private Spreadsheet $spreadsheet)
     {
     }
@@ -77,11 +79,14 @@ class Html extends BaseWriter
     /** Full standalone document: header (with styles), navigation, sheet data, footer. */
     public function generateHtmlAll(): string
     {
+        $this->cssCache = [];
+        $data = $this->generateSheetData();
+
         $html = $this->generateHTMLHeader(true);
         if ($this->generateSheetNavigationBlock && $this->sheetIndex === null) {
             $html .= $this->generateNavigation();
         }
-        $html .= $this->generateSheetData();
+        $html .= $data;
         $html .= $this->generateHTMLFooter();
 
         if ($this->editHtmlCallback !== null) {
@@ -117,7 +122,17 @@ class Html extends BaseWriter
             . 'table.sheet { border-collapse: collapse; margin-bottom: 1em; }' . $eol
             . 'table.sheet caption { font-weight: bold; text-align: left; padding: 0.25em 0; }' . $eol
             . 'table.sheet td { border: 1px solid #d0d0d0; padding: 1px 3px; vertical-align: top; }' . $eol
-            . 'nav.sheet-navigation a { margin-right: 1em; }' . $eol;
+            . 'nav.sheet-navigation a { margin-right: 1em; }' . $eol
+            . 'thead { display: table-header-group; }' . $eol
+            . 'tfoot { display: table-footer-group; }' . $eol
+            . 'tr { page-break-inside: avoid; }' . $eol
+            . 'table.sheet { margin-bottom: 0; }' . $eol
+            . 'table.sheet + table.sheet { border-top: none; }' . $eol;
+
+        // Unique CSS classes cache styles
+        foreach ($this->cssCache as $hash => $style) {
+            $css .= 'table.sheet .' . $style['class'] . ' { ' . \implode(' ', $style['rules']) . ' }' . $eol;
+        }
 
         if (!$generateSurroundingHTML) {
             return '<style type="text/css">' . $eol . $css . '</style>' . $eol;
@@ -318,13 +333,89 @@ class Html extends BaseWriter
         $eol = $this->lineEnding;
         $rows = $sheet->toArray(null, true, true, false);
         $spans = $this->mergeSpans($sheet);
+        $sheetName = $sheet->getTitle();
 
-        $html = '<table class="sheet" id="sheet' . $index . '">' . $eol
-            . '<caption>' . self::escape($sheet->getTitle()) . '</caption>' . $eol;
+        $repeatRows = [];
+        if ($sheet->getPageSetup()->isRowsToRepeatAtTopSet()) {
+            $repeatRows = $sheet->getPageSetup()->getRowsToRepeatAtTop();
+        } else {
+            // Fallback: search defined names for '_xlnm.Print_Titles' if sheet was loaded from a file
+            $definedNames = $sheet->getParent()->getDefinedNames();
+            $printTitlesRange = $definedNames['_XLNM.PRINT_TITLES'] ?? $definedNames['_xlnm.Print_Titles'] ?? null;
+            if ($printTitlesRange !== null) {
+                $scopedSheet = $printTitlesRange->getWorksheet();
+                if ($scopedSheet === null || $scopedSheet->getTitle() === $sheetName) {
+                    $refersTo = $printTitlesRange->getRange();
+                    foreach (\explode(',', $refersTo) as $part) {
+                        if (\preg_match('/\$(\d+):\$(\d+)/', $part, $matches)) {
+                            $repeatRows = [(int)$matches[1], (int)$matches[2]];
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
-        foreach ($rows as $r => $cells) {
+        $hasRepeat = !empty($repeatRows) && isset($repeatRows[0], $repeatRows[1]);
+        $repeatStart = $hasRepeat ? (int)$repeatRows[0] : 0;
+        $repeatEnd = $hasRepeat ? (int)$repeatRows[1] : 0;
+        $highestRow = \count($rows);
+        $highestColIndex = Coordinate::columnIndexFromString($sheet->getHighestColumn());
+
+        // Get Column Widths
+        $colWidths = [];
+        for ($col = 1; $col <= $highestColIndex; $col++) {
+            $colLetter = Coordinate::stringFromColumnIndex($col);
+            $dim = $sheet->getColumnDimension($colLetter);
+            $w = $dim->getWidth();
+            if ($w > 0) {
+                $colWidths[$col] = $w;
+            }
+        }
+
+        // Get Row Heights
+        $rowHeights = [];
+        for ($row = 1; $row <= $highestRow; $row++) {
+            $dim = $sheet->getRowDimension($row);
+            $h = $dim->getRowHeight();
+            if ($h > 0) {
+                $rowHeights[$row] = $h;
+            }
+        }
+
+        // Get Drawings (Images) map
+        $drawings = $sheet->getDrawingCollection();
+        $drawingMap = [];
+        foreach ($drawings as $d) {
+            $drawingMap[$d->getCoordinates()][] = $d;
+        }
+
+        $renderColGroup = function () use ($colWidths, $highestColIndex): string {
+            $cg = '';
+            if (!empty($colWidths)) {
+                $cg .= '            <colgroup>' . PHP_EOL;
+                for ($c = 1; $c <= $highestColIndex; $c++) {
+                    $widthStyle = isset($colWidths[$c]) ? ' style="width: ' . \round($colWidths[$c] * 8) . 'px;"' : '';
+                    $cg .= '                <col' . $widthStyle . '>' . PHP_EOL;
+                }
+                $cg .= '            </colgroup>' . PHP_EOL;
+            }
+            return $cg;
+        };
+
+        $renderRow = function (int $r) use ($rows, $spans, $eol, $sheet, $rowHeights, $drawingMap): string {
             $rowNum = $r + 1; // toArray() is a 0-indexed list; cells are 1-based
-            $html .= '<tr>' . $eol;
+            if (!isset($rows[$r])) {
+                return '';
+            }
+            $cells = $rows[$r];
+
+            $rowStyle = '';
+            if (isset($rowHeights[$rowNum])) {
+                $rowStyle = ' style="height: ' . \round($rowHeights[$rowNum] * 1.3) . 'px;"';
+            }
+
+            $rowHtml = '<tr' . $rowStyle . '>' . $eol;
             foreach ($cells as $c => $value) {
                 $colNum = $c + 1;
                 $span = $spans[$rowNum][$colNum] ?? null;
@@ -340,13 +431,251 @@ class Html extends BaseWriter
                         $attr .= ' rowspan="' . $span['rows'] . '"';
                     }
                 }
+
+                $coordinate = Coordinate::stringFromColumnIndex($colNum) . $rowNum;
+                $cellStyle = $sheet->getStyle($coordinate)->describe();
+
+                $styleAttr = '';
+                if ($this->useInlineCss) {
+                    $rules = $this->buildCssRules($cellStyle);
+                    if (!empty($rules)) {
+                        $styleAttr = ' style="' . \implode(' ', $rules) . '"';
+                    }
+                } else {
+                    $cssClass = $this->getOrCreateCssClass($cellStyle);
+                    if ($cssClass !== '') {
+                        $styleAttr = ' class="' . $cssClass . '"';
+                    }
+                }
+                $attr .= $styleAttr;
+
+                // Drawings (Images) in this cell coordinate
+                $drawingsHtml = '';
+                if (isset($drawingMap[$coordinate])) {
+                    foreach ($drawingMap[$coordinate] as $drawing) {
+                        $imgPath = $drawing->getPath();
+                        if (\file_exists($imgPath)) {
+                            if ($this->embedImages) {
+                                $mime = \mime_content_type($imgPath) ?: 'image/png';
+                                $imgData = \base64_encode(\file_get_contents($imgPath));
+                                $src = "data:{$mime};base64,{$imgData}";
+                            } else {
+                                $src = $this->imagesRoot . '/' . \basename($imgPath);
+                            }
+                            $imgStyle = '';
+                            if ($drawing->getName() !== '') {
+                                $imgStyle .= ' alt="' . \htmlspecialchars($drawing->getName(), ENT_QUOTES, 'UTF-8') . '"';
+                            }
+                            $drawingsHtml .= '<img src="' . $src . '"' . $imgStyle . ' style="vertical-align: middle;">';
+                        }
+                    }
+                }
+
                 $cell = $value === null ? '' : self::escape((string) $value);
-                $html .= '<td' . $attr . '>' . ($cell === '' ? '&nbsp;' : $cell) . '</td>' . $eol;
+                $cell = \str_replace("\n", '<br>', $cell);
+
+                if ($drawingsHtml !== '') {
+                    if ($cell !== '') {
+                        $cell = $drawingsHtml . '<br>' . $cell;
+                    } else {
+                        $cell = $drawingsHtml;
+                    }
+                }
+                if ($cell === '') {
+                    $cell = '&nbsp;';
+                }
+
+                $rowHtml .= '<td' . $attr . '>' . $cell . '</td>' . $eol;
             }
-            $html .= '</tr>' . $eol;
+            $rowHtml .= '</tr>' . $eol;
+            return $rowHtml;
+        };
+
+        $html = '';
+
+        if ($hasRepeat) {
+            // Write table 1 for rows before repeat start, if any
+            if ($repeatStart > 1) {
+                $html .= '<table class="sheet" id="sheet' . $index . '">' . $eol
+                    . '<caption>' . self::escape($sheetName) . '</caption>' . $eol;
+                $html .= $renderColGroup();
+                $html .= '<tbody>' . $eol;
+                for ($r = 0; $r < $repeatStart - 1; $r++) {
+                    $html .= $renderRow($r);
+                }
+                $html .= '</tbody>' . $eol;
+                $html .= '</table>' . $eol;
+            }
+
+            // Write table 2 with thead (repeat rows) and tbody (subsequent rows)
+            $html .= '<table class="sheet" id="sheet' . $index . '_repeated">' . $eol;
+            if ($repeatStart <= 1) {
+                // If it's the only table, include the caption
+                $html .= '<caption>' . self::escape($sheetName) . '</caption>' . $eol;
+            }
+            $html .= $renderColGroup();
+            $html .= '<thead>' . $eol;
+            for ($r = $repeatStart - 1; $r < \min($repeatEnd, $highestRow); $r++) {
+                $html .= $renderRow($r);
+            }
+            $html .= '</thead>' . $eol;
+
+            if ($repeatEnd < $highestRow) {
+                $html .= '<tbody>' . $eol;
+                for ($r = $repeatEnd; $r < $highestRow; $r++) {
+                    $html .= $renderRow($r);
+                }
+                $html .= '</tbody>' . $eol;
+            }
+            $html .= '</table>' . $eol;
+        } else {
+            // Write standard single table with tbody
+            $html .= '<table class="sheet" id="sheet' . $index . '">' . $eol
+                . '<caption>' . self::escape($sheetName) . '</caption>' . $eol;
+            $html .= $renderColGroup();
+            $html .= '<tbody>' . $eol;
+            for ($r = 0; $r < $highestRow; $r++) {
+                $html .= $renderRow($r);
+            }
+            $html .= '</tbody>' . $eol;
+            $html .= '</table>' . $eol;
         }
 
-        return $html . '</table>' . $eol;
+        return $html;
+    }
+
+    protected function getOrCreateCssClass(array $style): string
+    {
+        if (empty($style)) {
+            return '';
+        }
+
+        $hash = \md5(\json_encode($style));
+        if (isset($this->cssCache[$hash])) {
+            return $this->cssCache[$hash]['class'];
+        }
+
+        $rules = $this->buildCssRules($style);
+        if (empty($rules)) {
+            return '';
+        }
+
+        $className = 'style_' . \count($this->cssCache);
+        $this->cssCache[$hash] = [
+            'class' => $className,
+            'rules' => $rules
+        ];
+
+        return $className;
+    }
+
+    protected function buildCssRules(array $style): array
+    {
+        $rules = [];
+
+        // Font
+        if (isset($style['font'])) {
+            $font = $style['font'];
+            if (isset($font['name'])) {
+                $rules[] = "font-family: '" . $font['name'] . "', sans-serif;";
+            }
+            if (isset($font['size'])) {
+                $rules[] = "font-size: " . $font['size'] . "pt;";
+            }
+            if (!empty($font['bold'])) {
+                $rules[] = "font-weight: bold;";
+            }
+            if (!empty($font['italic'])) {
+                $rules[] = "font-style: italic;";
+            }
+            if (!empty($font['underline']) && $font['underline'] !== 'none') {
+                $rules[] = "text-decoration: underline;";
+            }
+            if (isset($font['color']['rgb'])) {
+                $rules[] = "color: #" . $font['color']['rgb'] . ";";
+            } elseif (isset($font['color']['argb'])) {
+                $rules[] = "color: #" . \substr($font['color']['argb'], 2) . ";";
+            }
+        }
+
+        // Fill / Background
+        if (isset($style['fill'])) {
+            $fill = $style['fill'];
+            if (isset($fill['fillType']) && $fill['fillType'] === 'solid') {
+                if (isset($fill['startColor']['rgb'])) {
+                    $rules[] = "background-color: #" . $fill['startColor']['rgb'] . ";";
+                } elseif (isset($fill['startColor']['argb'])) {
+                    $rules[] = "background-color: #" . \substr($fill['startColor']['argb'], 2) . ";";
+                }
+            }
+        }
+
+        // Alignment
+        if (isset($style['alignment'])) {
+            $align = $style['alignment'];
+            if (isset($align['horizontal'])) {
+                $h = $align['horizontal'];
+                if ($h === 'center') {
+                    $rules[] = "text-align: center;";
+                } elseif ($h === 'right') {
+                    $rules[] = "text-align: right;";
+                } elseif ($h === 'left') {
+                    $rules[] = "text-align: left;";
+                } elseif ($h === 'justify') {
+                    $rules[] = "text-align: justify;";
+                }
+            }
+            if (isset($align['vertical'])) {
+                $v = $align['vertical'];
+                if ($v === 'center') {
+                    $rules[] = "vertical-align: middle;";
+                } elseif ($v === 'bottom') {
+                    $rules[] = "vertical-align: bottom;";
+                } elseif ($v === 'top') {
+                    $rules[] = "vertical-align: top;";
+                }
+            }
+            if (!empty($align['wrapText'])) {
+                $rules[] = "white-space: normal; word-wrap: break-word;";
+            }
+        }
+
+        // Borders
+        if (isset($style['borders'])) {
+            foreach (['top', 'bottom', 'left', 'right'] as $borderName) {
+                if (isset($style['borders'][$borderName])) {
+                    $border = $style['borders'][$borderName];
+                    $borderStyle = $border['borderStyle'] ?? 'none';
+                    if ($borderStyle !== 'none') {
+                        $width = '1px';
+                        if (\str_contains($borderStyle, 'medium')) {
+                            $width = '2px';
+                        } elseif (\str_contains($borderStyle, 'thick')) {
+                            $width = '3px';
+                        }
+
+                        $type = 'solid';
+                        if (\str_contains($borderStyle, 'dashed')) {
+                            $type = 'dashed';
+                        } elseif (\str_contains($borderStyle, 'dotted')) {
+                            $type = 'dotted';
+                        } elseif (\str_contains($borderStyle, 'double')) {
+                            $type = 'double';
+                        }
+
+                        $color = 'black';
+                        if (isset($border['color']['rgb'])) {
+                            $color = "#" . $border['color']['rgb'];
+                        } elseif (isset($border['color']['argb'])) {
+                            $color = "#" . \substr($border['color']['argb'], 2);
+                        }
+                        $rules[] = "border-{$borderName}: {$width} {$type} {$color};";
+                    }
+                }
+            }
+        }
+
+        return $rules;
     }
 
     /**
@@ -362,7 +691,9 @@ class Html extends BaseWriter
             [[$startCol, $startRow], [$endCol, $endRow]] = Coordinate::rangeBoundaries($range);
             $spans[$startRow][$startCol] = ['rows' => $endRow - $startRow + 1, 'cols' => $endCol - $startCol + 1];
             for ($row = $startRow; $row <= $endRow; ++$row) {
+                $row = (int) $row;
                 for ($col = $startCol; $col <= $endCol; ++$col) {
+                    $col = (int) $col;
                     if ($row === $startRow && $col === $startCol) {
                         continue;
                     }

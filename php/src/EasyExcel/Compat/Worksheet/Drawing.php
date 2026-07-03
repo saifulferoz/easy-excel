@@ -111,6 +111,10 @@ class Drawing
             throw new Exception('easy-excel: set the drawing path before attaching it to a worksheet');
         }
         $this->worksheet = $worksheet;
+        
+        // Track the drawing in PHP side so HTML writer can fetch it
+        $worksheet->addDrawing($this);
+
         Native::addImage(
             $worksheet->getParent()->getHandle(),
             $worksheet->getTitle(),

@@ -153,6 +153,36 @@ return [
         T::ok(\str_contains($w->generateHTMLFooter(), '</html>'), 'footer closes document');
     },
 
+    'writer: html repeat table headers' => function (): void {
+        $s = new Spreadsheet();
+        $ws = $s->getActiveSheet();
+        $ws->setTitle('Sheet1');
+        for ($r = 1; $r <= 6; $r++) {
+            $ws->setCellValueByColumnAndRow(1, $r, "Val $r");
+        }
+        // Set repeating rows 2 to 4
+        $ws->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(2, 4);
+
+        $w = new HtmlWriter($s);
+        $html = $w->generateHtmlAll();
+
+        // Should have exactly 2 tables
+        T::same(2, \substr_count($html, '<table'), 'table split into 2');
+        T::ok(\str_contains($html, '<thead>'), 'thead tag emitted');
+        T::ok(\str_contains($html, '</thead>'), 'thead closed');
+
+        // Verify content distribution
+        $t1Start = \strpos($html, '<table');
+        $t1End = \strpos($html, '</table>', $t1Start);
+        $t2Start = \strpos($html, '<table', $t1End);
+
+        T::ok(\strpos($html, 'Val 1') < $t1End, 'Row 1 is in first table');
+        T::ok(\strpos($html, 'Val 2') > $t2Start, 'Row 2 is in second table');
+        T::ok(\strpos($html, 'Val 2') < \strpos($html, '</thead>'), 'Row 2 is inside thead');
+        T::ok(\strpos($html, 'Val 4') < \strpos($html, '</thead>'), 'Row 4 is inside thead');
+        T::ok(\strpos($html, 'Val 5') > \strpos($html, '</thead>'), 'Row 5 is after thead (in tbody)');
+    },
+
     'reader: csv loads in chunks with binding' => function (): void {
         $file = \tempnam(\sys_get_temp_dir(), 'eex') . '.csv';
         \file_put_contents($file, "name,qty\nwidget,3\ngadget,0150\n");
