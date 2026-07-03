@@ -40,6 +40,9 @@ class Worksheet
 
     private ?Protection $protection = null;
 
+    /** @var list<Drawing> List of attached drawings */
+    private array $drawings = [];
+
     public function __construct(private Spreadsheet $parent, private string $title)
     {
     }
@@ -63,6 +66,19 @@ class Worksheet
         $this->title = $title;
 
         return $this;
+    }
+
+    // --- drawings -------------------------------------------------------------
+
+    public function addDrawing(Drawing $drawing): void
+    {
+        $this->drawings[] = $drawing;
+    }
+
+    /** @return list<Drawing> */
+    public function getDrawingCollection(): array
+    {
+        return $this->drawings;
     }
 
     // --- writes ---------------------------------------------------------------
