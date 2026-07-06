@@ -7,7 +7,7 @@ namespace EasyExcel\Compat\Reader;
 use EasyExcel\Compat\Exception;
 use EasyExcel\Compat\Spreadsheet;
 
-class Csv
+class Csv implements IReader
 {
     private string $delimiter = ',';
     private string $enclosure = '"';

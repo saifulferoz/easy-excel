@@ -19,6 +19,12 @@ GD `MemoryDrawing`, the PhpSpreadsheet `Chart\*` object model
 (`getAutoFilter()->getColumn()`). This completes Phase 4 — MISSING.md now
 lists only items that stay out by design.
 
+Closed by wave 4.5 (2026-07-06): custom writer/reader registration
+(`IOFactory::registerWriter/registerReader`, consulted before the built-ins
+so formats can be overridden or added), `IOFactory::createReaderForFile`
+with `canRead()` probing, the `Reader\IReader` contract (implemented by the
+built-in readers), and the `Writer\Exception` / `Reader\Exception` classes.
+
 Closed by wave 4.3 (2026-06-13): insert/remove rows and columns,
 `createSheet($index)`, sheet copy (`Spreadsheet::copySheet` extra), sheet
 views (gridlines/zoom/RTL/tab color), headers/footers, page margins — plus
