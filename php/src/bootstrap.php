@@ -30,4 +30,9 @@ require_once __DIR__ . '/aliasing.php';
 
     $mode = \EasyExcel\aliasMode($env, \function_exists('easy_excel_new'));
     \EasyExcel\registerCompatAutoloader($mode);
+    if ($mode !== 'off') {
+        // instanceof/typed-parameter checks never autoload, so lazy aliasing
+        // alone would miss them — alias the whole Compat surface up front.
+        \EasyExcel\aliasCompatSurface();
+    }
 })();

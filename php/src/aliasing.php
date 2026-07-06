@@ -119,3 +119,42 @@ function registerCompatAutoloader(string $mode): void
         }
     }, true, true);
 }
+
+/**
+ * Alias the entire Compat surface up front.
+ *
+ * Lazy aliasing from the autoloader alone is not enough: the engine skips
+ * autoloading for `instanceof` and typed-parameter/return checks (an unloaded
+ * class "cannot" have instances — an assumption class_alias breaks). A Compat
+ * object handed to `function (Worksheet $ws)` would fail the type check if
+ * PhpOffice\PhpSpreadsheet\Worksheet\Worksheet had never been explicitly
+ * loaded. Eagerly aliasing every Compat class/interface makes those checks
+ * behave exactly as with the real package; unimplemented classes still go
+ * through the lazy autoloader (throw in strict, defer in fallback).
+ *
+ * Cost: one directory walk + loading the Compat classes once per process —
+ * amortised to ~zero under opcache/FrankenPHP worker mode.
+ */
+function aliasCompatSurface(): void
+{
+    $root = __DIR__ . '/EasyExcel/Compat';
+    $iterator = new \RecursiveIteratorIterator(
+        new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)
+    );
+    /** @var \SplFileInfo $file */
+    foreach ($iterator as $file) {
+        if ($file->getExtension() !== 'php') {
+            continue;
+        }
+        $relative = \substr($file->getPathname(), \strlen($root) + 1, -4);
+        $suffix = \str_replace(\DIRECTORY_SEPARATOR, '\\', $relative);
+        $compat = 'EasyExcel\\Compat\\' . $suffix;
+        $target = 'PhpOffice\\PhpSpreadsheet\\' . $suffix;
+        if (\class_exists($target, false) || \interface_exists($target, false)) {
+            continue; // already aliased (or the real class won the race — leave it)
+        }
+        if (\class_exists($compat) || \interface_exists($compat)) {
+            \class_alias($compat, $target);
+        }
+    }
+}
