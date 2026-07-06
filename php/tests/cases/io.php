@@ -72,6 +72,41 @@ final class EexTestStreamWrapper
     }
 }
 
+/** Custom writer for the registerWriter tests (the app-side 'Pdf' writer pattern). */
+final class FakePdfWriter extends BaseWriter
+{
+    public Spreadsheet $book;
+
+    public function __construct(Spreadsheet $spreadsheet)
+    {
+        $this->book = $spreadsheet;
+    }
+
+    public function save($filename, int $flags = 0): void
+    {
+        if (\is_string($filename)) {
+            \file_put_contents($filename, '%PDF-fake');
+        }
+    }
+}
+
+/** Custom reader for the registerReader / createReaderForFile probing tests. */
+final class FakeXmlReader implements \EasyExcel\Compat\Reader\IReader
+{
+    public function canRead(string $filename): bool
+    {
+        return \str_ends_with(\strtolower($filename), '.fakexml') && \is_readable($filename);
+    }
+
+    public function load(string $filename, int $flags = 0): Spreadsheet
+    {
+        $s = new Spreadsheet();
+        $s->getActiveSheet()->setCellValue('A1', 'from-fake-reader');
+
+        return $s;
+    }
+}
+
 return [
     'iofactory: identify and create' => function (): void {
         T::same('Xlsx', IOFactory::identify('/tmp/report.XLSX'));
@@ -315,5 +350,68 @@ return [
         T::same(27, \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString('AA'));
         $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($s, 'Xlsx');
         T::ok($writer instanceof XlsxWriter, 'IOFactory through alias');
+    },
+
+    'iofactory: registerWriter adds and overrides formats' => function (): void {
+        $s = new Spreadsheet();
+
+        IOFactory::registerWriter('Pdf', FakePdfWriter::class);
+        $w = IOFactory::createWriter($s, 'Pdf');
+        T::ok($w instanceof FakePdfWriter, 'registered format resolved');
+        T::ok($w->book === $s, 'workbook passed to custom writer');
+
+        IOFactory::registerWriter('Html', FakePdfWriter::class);
+        try {
+            T::ok(IOFactory::createWriter($s, 'Html') instanceof FakePdfWriter, 'built-in format overridden');
+        } finally {
+            IOFactory::registerWriter('Html', HtmlWriter::class); // restore for later cases
+        }
+        T::ok(IOFactory::createWriter($s, 'Html') instanceof HtmlWriter, 'override restored');
+
+        T::throws(
+            \EasyExcel\Compat\Writer\Exception::class,
+            static fn () => IOFactory::registerWriter('Bogus', \stdClass::class)
+        );
+    },
+
+    'iofactory: registerReader and createReaderForFile probing' => function (): void {
+        IOFactory::registerReader('FakeXml', FakeXmlReader::class);
+        T::ok(IOFactory::createReader('FakeXml') instanceof FakeXmlReader, 'registered reader resolved');
+
+        T::throws(
+            \EasyExcel\Compat\Reader\Exception::class,
+            static fn () => IOFactory::registerReader('Bogus', \stdClass::class)
+        );
+
+        // unknown extension: probing must reach the registered reader before Csv's catch-all
+        $file = \tempnam(\sys_get_temp_dir(), 'eex') . '.fakexml';
+        \file_put_contents($file, '<fake/>');
+        try {
+            T::ok(IOFactory::createReaderForFile($file) instanceof FakeXmlReader, 'probed via canRead');
+            $loaded = IOFactory::load($file);
+            T::same('from-fake-reader', $loaded->getActiveSheet()->getCell('A1')->getValue(), 'load() uses probing');
+        } finally {
+            @\unlink($file);
+        }
+
+        // known extension keeps the extension fast path
+        $xlsx = \tempnam(\sys_get_temp_dir(), 'eex') . '.xlsx';
+        \file_put_contents($xlsx, 'stub');
+        try {
+            T::ok(
+                IOFactory::createReaderForFile($xlsx) instanceof \EasyExcel\Compat\Reader\Xlsx,
+                'extension-identified reader'
+            );
+        } finally {
+            @\unlink($xlsx);
+        }
+    },
+
+    'iofactory: readers implement IReader and new aliases resolve' => function (): void {
+        T::ok(new \EasyExcel\Compat\Reader\Xlsx() instanceof \EasyExcel\Compat\Reader\IReader, 'xlsx reader contract');
+        T::ok(new CsvReader() instanceof \EasyExcel\Compat\Reader\IReader, 'csv reader contract');
+        T::ok(\interface_exists('PhpOffice\\PhpSpreadsheet\\Reader\\IReader'), 'IReader aliased');
+        T::ok(\class_exists('PhpOffice\\PhpSpreadsheet\\Writer\\Exception'), 'Writer\\Exception aliased');
+        T::ok(\class_exists('PhpOffice\\PhpSpreadsheet\\Reader\\Exception'), 'Reader\\Exception aliased');
     },
 ];
