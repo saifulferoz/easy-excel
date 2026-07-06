@@ -769,13 +769,53 @@ class Worksheet
             return [Native::MARK_NUMERIC, Date::dateTimeToExcel($value)];
         }
         if ($value instanceof \Stringable) {
-            return (string) $value;
+            $value = (string) $value;
         }
         if ($value !== null && !\is_scalar($value)) {
             throw new Exception('Unsupported cell value of type ' . \get_debug_type($value));
         }
+        // A numeric-looking string the Go side would otherwise coerce to a
+        // number is forced to a text cell when that coercion would change the
+        // value: leading-zero strings ("0123") and integer strings past
+        // float64's exact range (> 2^53, e.g. 17-digit member IDs). This
+        // matches PhpSpreadsheet, whose Xlsx output keeps the original digits
+        // instead of a re-stringified float. Numeric strings that round-trip
+        // stay on the fast bare-scalar path.
+        if (\is_string($value) && $value !== '' && self::mustPreserveAsString($value)) {
+            return [Native::MARK_STRING, $value];
+        }
 
         return $value;
+    }
+
+    /**
+     * True when a numeric string must be written as text to stop the Go binder
+     * turning it into a different number (leading zeros, or precision loss
+     * beyond float64's 2^53 exact-integer range).
+     */
+    private static function mustPreserveAsString(string $value): bool
+    {
+        if (!\is_numeric($value)) {
+            return false;
+        }
+        $digits = \ltrim($value, '+-');
+        // leading-zero integer strings ("0123") stay text, like PhpSpreadsheet
+        $second = $digits[1] ?? '';
+        if (\strlen($digits) > 1 && $digits[0] === '0' && $second !== '.' && $second !== 'e' && $second !== 'E') {
+            return true;
+        }
+        // pure integer strings beyond 2^53 (9007199254740992) lose precision
+        // once parsed as a float64
+        if (\preg_match('/^[+-]?\d+$/', $value)) {
+            $normalized = \ltrim($digits, '0');
+            if ($normalized !== ''
+                && (\strlen($normalized) > 16
+                    || (\strlen($normalized) === 16 && $normalized > '9007199254740992'))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array{0: string, 1: mixed} */

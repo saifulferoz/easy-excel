@@ -113,4 +113,41 @@ return [
         $typed = static fn (\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet): string => $sheet->getTitle();
         T::same('Worksheet', $typed($ws), 'typed parameter accepts Compat object');
     },
+
+    'wave45: fromArray preserves precision of big-int / leading-zero strings' => function (): void {
+        // Regression: the bulk path let the Go binder coerce these numeric
+        // strings to float64, corrupting 17-digit IDs and dropping leading
+        // zeros. They must round-trip as text, like PhpSpreadsheet — without
+        // needing a custom value binder (which forces the slow per-cell path).
+        EasyExcelFake::reset();
+        $ws = (new Spreadsheet())->getActiveSheet();
+        $ws->fromArray([[
+            '9007199254740993',    // 2^53 + 1: unsafe as float
+            '99999999999999999',   // 17 digits: unsafe
+            '0123',                // leading zero: stays text
+            '9007199254740992',    // exactly 2^53: still safe as number
+            '12345',               // small: stays a number
+            '123.45',              // decimal: stays a number
+        ]], null, 'A1');
+        $ws->flush();
+
+        T::same('9007199254740993', $ws->getCell('A1')->getValue(), 'big int string preserved');
+        T::same('99999999999999999', $ws->getCell('B1')->getValue(), '17-digit string preserved');
+        T::same('0123', $ws->getCell('C1')->getValue(), 'leading-zero string stays text');
+        T::same(9007199254740992.0, $ws->getCell('D1')->getValue(), '2^53 stays numeric');
+        T::same(12345.0, $ws->getCell('E1')->getValue(), 'small int stays numeric');
+        T::same(123.45, $ws->getCell('F1')->getValue(), 'decimal stays numeric');
+    },
+
+    'wave45: setCellValue preserves big-int / leading-zero strings' => function (): void {
+        EasyExcelFake::reset();
+        $ws = (new Spreadsheet())->getActiveSheet();
+        $ws->setCellValue('A1', '99999999999999999');
+        $ws->setCellValue('A2', '0123');
+        $ws->setCellValue('A3', '42');
+        $ws->flush();
+        T::same('99999999999999999', $ws->getCell('A1')->getValue(), 'per-cell big int preserved');
+        T::same('0123', $ws->getCell('A2')->getValue(), 'per-cell leading zero preserved');
+        T::same(42.0, $ws->getCell('A3')->getValue(), 'per-cell small int numeric');
+    },
 ];
