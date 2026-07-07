@@ -6,6 +6,7 @@ namespace EasyExcel\Compat\Writer;
 
 use EasyExcel\Compat\Cell\Coordinate;
 use EasyExcel\Compat\Exception;
+use EasyExcel\Compat\Shared\StreamPath;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Worksheet\PageSetup;
 use EasyExcel\Compat\Worksheet\Worksheet;
@@ -56,14 +57,14 @@ class Html extends BaseWriter
     }
 
     /**
-     * @param resource|string $filename filesystem path, php:// URL, or open stream
+     * @param resource|string $filename filesystem path, stream-wrapper URL, or open stream
      */
     public function save($filename, int $flags = 0): void
     {
         $this->processFlags($flags);
         $html = $this->generateHtmlAll();
 
-        if (\is_string($filename) && !\str_starts_with($filename, 'php://')) {
+        if (\is_string($filename) && !StreamPath::isWrapped($filename)) {
             if (\file_put_contents($filename, $html) === false) {
                 throw new Exception("Could not write to $filename");
             }

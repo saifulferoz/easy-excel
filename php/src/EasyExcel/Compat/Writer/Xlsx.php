@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace EasyExcel\Compat\Writer;
 
 use EasyExcel\Compat\Exception;
+use EasyExcel\Compat\Shared\StreamPath;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Native;
 
@@ -29,10 +30,10 @@ class Xlsx extends BaseWriter
     }
 
     /**
-     * Saves to a filesystem path, a php:// stream, or an open resource. Streams
-     * go through a temp file because the extension writes files directly (the
-     * xlsx container is already deflated — never double-compress it, PLAN.md
-     * B10).
+     * Saves to a filesystem path, a stream-wrapper URL (php://, gaufrette://,
+     * ...), or an open resource. Streams go through a temp file because the
+     * extension writes files directly (the xlsx container is already deflated
+     * — never double-compress it, PLAN.md B10).
      *
      * @param resource|string $filename
      */
@@ -42,7 +43,7 @@ class Xlsx extends BaseWriter
         $this->spreadsheet->flushAll();
         $handle = $this->spreadsheet->getHandle();
 
-        if (\is_string($filename) && !\str_starts_with($filename, 'php://')) {
+        if (\is_string($filename) && !StreamPath::isWrapped($filename)) {
             Native::saveXlsx($handle, $filename, $this->password);
 
             return;

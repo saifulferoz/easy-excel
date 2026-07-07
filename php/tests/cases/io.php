@@ -4,12 +4,73 @@ declare(strict_types=1);
 
 use EasyExcel\Compat\IOFactory;
 use EasyExcel\Compat\Reader\Csv as CsvReader;
+use EasyExcel\Compat\Reader\Xlsx as XlsxReader;
+use EasyExcel\Compat\Shared\StreamPath;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Writer\BaseWriter;
 use EasyExcel\Compat\Writer\Csv as CsvWriter;
 use EasyExcel\Compat\Writer\Html as HtmlWriter;
 use EasyExcel\Compat\Writer\IWriter;
 use EasyExcel\Compat\Writer\Xlsx as XlsxWriter;
+
+/** In-memory stream wrapper standing in for gaufrette:// / s3:// style userland wrappers. */
+final class EexTestStreamWrapper
+{
+    /** @var array<string, string> */
+    public static array $files = [];
+
+    /** @var resource|null */
+    public $context;
+
+    private string $path;
+    private int $pos = 0;
+
+    public function stream_open(string $path, string $mode): bool
+    {
+        $this->path = $path;
+        if (\str_contains($mode, 'r')) {
+            return isset(self::$files[$path]);
+        }
+        self::$files[$path] = '';
+
+        return true;
+    }
+
+    public function stream_write(string $data): int
+    {
+        self::$files[$this->path] .= $data;
+
+        return \strlen($data);
+    }
+
+    public function stream_read(int $count): string
+    {
+        $chunk = \substr(self::$files[$this->path], $this->pos, $count);
+        $this->pos += \strlen($chunk);
+
+        return $chunk;
+    }
+
+    public function stream_eof(): bool
+    {
+        return $this->pos >= \strlen(self::$files[$this->path]);
+    }
+
+    public function stream_tell(): int
+    {
+        return $this->pos;
+    }
+
+    /** @return array<int|string, int> */
+    public function stream_stat(): array
+    {
+        return [];
+    }
+
+    public function stream_close(): void
+    {
+    }
+}
 
 return [
     'iofactory: identify and create' => function (): void {
@@ -62,6 +123,53 @@ return [
         (new XlsxWriter($s))->save('php://output');
         $out = \ob_get_clean();
         T::ok(\str_contains($out, 'streamed'), 'content reached the stream');
+    },
+
+    'shared: StreamPath::isWrapped detects scheme-qualified paths' => function (): void {
+        T::ok(StreamPath::isWrapped('php://output'), 'php://');
+        T::ok(StreamPath::isWrapped('gaufrette://ftp/report.xlsx'), 'gaufrette://');
+        T::ok(StreamPath::isWrapped('s3://bucket/key.xlsx'), 's3://');
+        T::ok(StreamPath::isWrapped('file:///tmp/a.xlsx'), 'file:// goes through the stream layer too');
+        T::ok(!StreamPath::isWrapped('/tmp/report.xlsx'), 'absolute path');
+        T::ok(!StreamPath::isWrapped('report.xlsx'), 'relative path');
+        T::ok(!StreamPath::isWrapped('C:\\data\\report.xlsx'), 'windows drive path');
+    },
+
+    'writer: custom stream wrapper target staged via temp file' => function (): void {
+        \stream_wrapper_register('eextest', EexTestStreamWrapper::class);
+        try {
+            $s = new Spreadsheet();
+            $s->getActiveSheet()->setCellValue('A1', 'wrapped');
+            (new XlsxWriter($s))->save('eextest://bucket/report.xlsx');
+
+            [, [, $nativePath]] = EasyExcelFake::calls('save_xlsx')[0];
+            T::ok(!\str_contains($nativePath, '://'), 'extension got a real filesystem path');
+            $bytes = EexTestStreamWrapper::$files['eextest://bucket/report.xlsx'] ?? '';
+            T::ok(\str_contains($bytes, 'wrapped'), 'content reached the wrapper');
+        } finally {
+            \stream_wrapper_unregister('eextest');
+            EexTestStreamWrapper::$files = [];
+        }
+    },
+
+    'reader: custom stream wrapper source staged via temp file' => function (): void {
+        \stream_wrapper_register('eextest', EexTestStreamWrapper::class);
+        try {
+            EexTestStreamWrapper::$files['eextest://bucket/in.xlsx'] = 'xlsx-bytes';
+            try {
+                (new XlsxReader())->load('eextest://bucket/in.xlsx');
+                T::ok(false, 'fake native open should have failed');
+            } catch (\EasyExcel\Exception\EasyExcelException) {
+                // expected: the fake extension cannot open workbooks
+            }
+            [, [$nativePath, , $staged]] = EasyExcelFake::calls('open')[0];
+            T::ok(!\str_contains($nativePath, '://'), 'extension got a real filesystem path');
+            T::same('xlsx-bytes', $staged, 'staged bytes matched');
+            T::ok(!\is_file($nativePath), 'temp file cleaned up');
+        } finally {
+            \stream_wrapper_unregister('eextest');
+            EexTestStreamWrapper::$files = [];
+        }
     },
 
     'writer: built-ins implement IWriter / BaseWriter contract' => function (): void {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace EasyExcel\Compat\Writer;
 
 use EasyExcel\Compat\Exception;
+use EasyExcel\Compat\Shared\StreamPath;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Native;
 
@@ -92,7 +93,7 @@ class Csv extends BaseWriter
     }
 
     /**
-     * @param resource|string $filename filesystem path, php:// URL, or open stream
+     * @param resource|string $filename filesystem path, stream-wrapper URL, or open stream
      */
     public function save($filename, int $flags = 0): void
     {
@@ -102,7 +103,7 @@ class Csv extends BaseWriter
         $sheet = $this->spreadsheet->getSheet($this->sheetIndex)->getTitle();
         $crlf = $this->lineEnding === "\r\n";
 
-        if (\is_string($filename) && !\str_starts_with($filename, 'php://')) {
+        if (\is_string($filename) && !StreamPath::isWrapped($filename)) {
             Native::saveCsv($handle, $filename, $sheet, $this->delimiter, $crlf, $this->useBOM, $this->sanitizeFormulas);
 
             return;

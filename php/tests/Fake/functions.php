@@ -111,7 +111,10 @@ function easy_excel_new(): array
 
 function easy_excel_open(string $path, string $password = ''): array
 {
-    EasyExcelFake::$log[] = ['open', [$path, $password]];
+    // capture the content too: stream-staged temp files are unlinked right
+    // after open, so tests can only inspect them through this log entry
+    $content = \is_file($path) ? (string) \file_get_contents($path) : null;
+    EasyExcelFake::$log[] = ['open', [$path, $password, $content]];
 
     return [null, "fake: open not supported"];
 }
