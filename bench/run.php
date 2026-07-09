@@ -6,11 +6,16 @@ declare(strict_types=1);
  * Benchmark runner. One library + workload per process so peak memory is
  * honest. Emits a CSV line:
  *
- *   lib,workload,rows,wall_seconds,peak_mem_bytes,file_bytes
+ *   lib,workload,rows,wall_seconds,peak_mem_bytes,peak_rss_bytes,file_bytes
+ *
+ * peak_mem_bytes is the Zend allocator's peak; peak_rss_bytes is the whole
+ * process's VmHWM, which also counts memory PHP can't see (the easy-excel
+ * Go/cgo heap, excelize buffers). Includes interpreter startup — identical
+ * per lane, so cross-library comparison stays fair.
  *
  * Usage:
  *   php run.php <lib> <workload> [rows]
- *     lib:      easy-excel | phpspreadsheet | openspout | fast-excel-writer | rap2hpoutre
+ *     lib:      easy-excel | easy-excel-native | phpspreadsheet | openspout | fast-excel-writer | rap2hpoutre
  *     workload: write | read
  *
  * `write` produces rows x 10 mixed columns (string/int/float/date string).
@@ -98,6 +103,14 @@ function benchStyledWrite(object $spreadsheet, string $writerClass, string $file
     $spreadsheet->disconnectWorksheets();
 }
 
+/** Whole-process peak RSS in bytes (VmHWM high-water mark; Linux only, 0 elsewhere). */
+function peakRss(): int
+{
+    \preg_match('/^VmHWM:\s+(\d+)\s+kB/m', (string) @\file_get_contents('/proc/self/status'), $m);
+
+    return (int) ($m[1] ?? 0) * 1024;
+}
+
 \gc_collect_cycles();
 $t0 = \hrtime(true);
 $result = $adapters[$lib][$workload]($file, $rows);
@@ -105,4 +118,4 @@ $wall = (\hrtime(true) - $t0) / 1e9;
 $peak = \memory_get_peak_usage(true);
 $size = \is_file($file) ? \filesize($file) : 0;
 
-\printf("%s,%s,%d,%.3f,%d,%d\n", $lib, $workload, $workload === 'read' ? (int) $result : $rows, $wall, $peak, $size);
+\printf("%s,%s,%d,%.3f,%d,%d,%d\n", $lib, $workload, $workload === 'read' ? (int) $result : $rows, $wall, $peak, peakRss(), $size);

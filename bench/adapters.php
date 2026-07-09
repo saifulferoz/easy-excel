@@ -9,6 +9,31 @@ declare(strict_types=1);
  */
 
 return [
+    // raw extension calls, no Compat layer: isolates what the
+    // PhpSpreadsheet-compatible shim costs on top of the native path
+    'easy-excel-native' => [
+        'write' => function (string $file, int $rows): void {
+            \EasyExcel\Native::assertAvailable();
+            $h = \EasyExcel\Native::newWorkbook();
+            $sheet = \EasyExcel\Native::sheets($h)[0];
+            $chunk = [];
+            $at = 1;
+            foreach (benchRows($rows) as $row) {
+                $chunk[] = $row;
+                if (\count($chunk) === 2048) {
+                    \EasyExcel\Native::writeRows($h, $sheet, $at, 1, $chunk);
+                    $at += 2048;
+                    $chunk = [];
+                }
+            }
+            if ($chunk) {
+                \EasyExcel\Native::writeRows($h, $sheet, $at, 1, $chunk);
+            }
+            \EasyExcel\Native::saveXlsx($h, $file);
+            \EasyExcel\Native::close($h);
+        },
+    ],
+
     'easy-excel' => [
         'write' => function (string $file, int $rows): void {
             \EasyExcel\Native::assertAvailable();

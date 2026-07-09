@@ -49,14 +49,17 @@ host-build: generate
 		--with github.com/dunglas/frankenphp/caddy \
 		--with github.com/xiidea/easy-excel/extension=$$(pwd)
 
-# competitor baselines run in a plain PHP container; the easy-excel lane runs
-# inside the built image (frankenphp php-cli)
+# competitor baselines run in the bench image (bench/Dockerfile adds the
+# ext-zip they need); the easy-excel lane runs inside the built image
+# (frankenphp php-cli). Both mount the shim at /php — bench/composer.json
+# autoloads EasyExcel\ from ../php/src, i.e. /php/src inside the container.
 bench: build
+	docker build -t easy-excel-bench bench/
 	docker run --rm -v $(PWD)/bench:/bench -w /bench composer:2 sh -c "composer install --quiet"
-	docker run --rm -v $(PWD)/bench:/bench -w /bench php:8.5-cli ./run.sh 10000 100000
-	docker run --rm -v $(PWD)/bench:/bench -v $(PWD)/php:/opt/easy-excel/php -w /bench \
+	docker run --rm -v $(PWD)/bench:/bench -v $(PWD)/php:/php -w /bench easy-excel-bench ./run.sh 10000 100000
+	docker run --rm -v $(PWD)/bench:/bench -v $(PWD)/php:/php -w /bench \
 		-e EASY_EXCEL_PHP="frankenphp php-cli" $(IMAGE) \
-		sh -c 'frankenphp php-cli run.php easy-excel write 10000 && frankenphp php-cli run.php easy-excel write 100000'
+		sh -c 'for lib in easy-excel easy-excel-native; do for rows in 10000 100000; do frankenphp php-cli run.php $$lib write $$rows; done; done'
 
 clean:
 	rm -rf extension/build frankenphp bench/vendor bench/results.csv
