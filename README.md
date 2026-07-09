@@ -113,21 +113,32 @@ Notes:
 ## Measured performance
 
 Write N rows × 10 mixed columns, one process per run (Docker, PHP 8.5,
-Apple Silicon; `bench/baseline-2026-06-11-php8.5.csv`):
+Apple Silicon; `bench/baseline-2026-07-09-php8.5.csv`). "Workload memory" is
+the whole-process peak RSS (VmHWM) minus the idle runtime baseline, so for
+easy-excel it includes the Go-side buffers that PHP's own peak-memory counter
+cannot see:
 
-| Library | 100k rows | 1M rows | Peak PHP memory |
+| Library | 100k rows | 1M rows | Workload memory (1M) |
 |---|---|---|---|
-| PhpSpreadsheet 5.8 | 14.74s | — | 665MB at 100k |
-| rap2hpoutre/fast-excel | 4.00s | — | 4MB |
-| OpenSpout 4.x | 3.64s | 36.74s | 4MB |
-| fast-excel-writer 6.x | 2.67s | 28.16s | 4MB |
-| **easy-excel** | **0.82s** | **7.85s** | **4MB** |
+| PhpSpreadsheet 5.8 | 23.64s | out of memory (6GB cap) | ~647MB at 100k |
+| rap2hpoutre/fast-excel | 6.58s | 64.49s | ~3MB |
+| OpenSpout 4.x | 5.85s | 60.07s | ~3MB |
+| fast-excel-writer 6.x | 4.29s | 45.73s | ~3MB |
+| **easy-excel** (PhpSpreadsheet API) | **1.37s** | **11.91s** | **~189MB** |
+| **easy-excel** (native API) | **1.28s** | **11.35s** | **~186MB** |
+
+The two easy-excel lanes produce byte-identical files; the Compat shim costs
+about 5% over raw `EasyExcel\Native` calls. PHP-side peak memory stays at 4MB
+in both lanes — the ~186MB lives in the Go extension (excelize stream buffers),
+which still writes 1M rows in a fraction of the memory PhpSpreadsheet needs
+for 100k. (The 2026-06-11 baseline ran ~1.4× faster across all lanes —
+sessions vary, compare ratios, not absolute times.)
 
 Styled report (same data + styled header, two column number formats, widths,
 freeze pane, auto-filter; `write-styled` workload,
-`bench/baseline-2026-06-12-php8.5-phase3.csv`; this session ran ~1.5× slower
-than the table above — its unstyled 1M control was 11.9s — so compare ratios,
-not sessions):
+`bench/baseline-2026-06-12-php8.5-phase3.csv`; that session's unstyled 1M
+control was 11.9s, matching the table above, so its times are directly
+comparable):
 
 | Library | 100k rows | 1M rows | Peak PHP memory |
 |---|---|---|---|
