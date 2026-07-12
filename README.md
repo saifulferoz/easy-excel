@@ -82,6 +82,8 @@ straight from PHP with no composer dependency — see [NATIVE.md](NATIVE.md).
 | `EASY_EXCEL_ACQUIRE_TIMEOUT_MS` | `30000` | wait before `Overloaded` is raised |
 | `EASY_EXCEL_MEMORY_BUDGET_MB` | `512` | estimated live-workbook bytes circuit breaker |
 | `EASY_EXCEL_ALLOWED_PATHS` | unset (any local path) | colon-separated base dirs for load/save |
+| `EASY_EXCEL_UNZIP_LIMIT_MB` | `1024` | decompressed-size cap when (re)opening a workbook; large streamed workbooks need more the moment a save degrades |
+| `EASY_EXCEL_UNZIP_XML_LIMIT_MB` | `16` | per-XML-part decompressed cap for the same paths |
 
 ## Repository layout
 

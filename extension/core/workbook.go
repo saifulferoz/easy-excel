@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -39,11 +40,28 @@ const (
 )
 
 // Safe unzip defaults (PLAN.md §8): 1GiB total, 16MiB per XML part.
+// Both are overridable via environment (values in MiB): large streamed
+// workbooks can legitimately exceed 1GiB of decompressed sheet XML the
+// moment a save has to leave streaming mode (degrade reopen).
 const (
-	unzipSizeLimit    = 1 << 30
-	unzipXMLSizeLimit = 16 << 20
-	baseEstimate      = 8 << 20 // accounting floor per live workbook
+	defaultUnzipSizeLimit    = 1 << 30
+	defaultUnzipXMLSizeLimit = 16 << 20
+	baseEstimate             = 8 << 20 // accounting floor per live workbook
 )
+
+var (
+	unzipSizeLimit    = envMiB("EASY_EXCEL_UNZIP_LIMIT_MB", defaultUnzipSizeLimit)
+	unzipXMLSizeLimit = envMiB("EASY_EXCEL_UNZIP_XML_LIMIT_MB", defaultUnzipXMLSizeLimit)
+)
+
+// envMiB reads a positive MiB count from the environment, falling back to
+// def bytes for unset/invalid values (same contract as limits.FromEnv).
+func envMiB(key string, def int64) int64 {
+	if v, err := strconv.ParseInt(os.Getenv(key), 10, 64); err == nil && v > 0 {
+		return v << 20
+	}
+	return def
+}
 
 var errClosed = errors.New("easy-excel: workbook is closed")
 
