@@ -106,7 +106,7 @@ return [
 
     'wave45: eager aliasing covers instanceof and typed parameters' => function (): void {
         // instanceof/type checks never trigger autoload, so these only pass
-        // when the alias exists up front (aliasCompatSurface at bootstrap).
+        // when the alias exists up front (eagerAliasCompat at bootstrap).
         EasyExcelFake::reset();
         $ws = (new Spreadsheet())->getActiveSheet();
         T::ok($ws instanceof \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet, 'instanceof aliased name');
