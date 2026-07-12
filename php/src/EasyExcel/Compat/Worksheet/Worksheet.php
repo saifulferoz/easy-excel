@@ -376,13 +376,26 @@ class Worksheet
 
     // --- structure / styling ----------------------------------------------------
 
+    /**
+     * PhpSpreadsheet coordinate-array shapes (Validations::validateCellOrCellRange):
+     * [col, row] is a single cell, [col1, row1, col2, row2] is a range.
+     */
+    private static function coordinateFromArray(array $coordinate): string
+    {
+        $flat = \array_values($coordinate);
+
+        return match (\count($flat)) {
+            2 => Coordinate::stringFromColumnIndex((int) $flat[0]) . (int) $flat[1],
+            4 => Coordinate::stringFromColumnIndex((int) $flat[0]) . (int) $flat[1]
+                . ':' . Coordinate::stringFromColumnIndex((int) $flat[2]) . (int) $flat[3],
+            default => throw new Exception('Coordinate array must contain 2 (cell) or 4 (range) elements'),
+        };
+    }
+
     public function mergeCells(string|array $range): static
     {
         if (\is_array($range)) {
-            $range = \implode(':', \array_map(
-                static fn (array $c): string => Coordinate::stringFromColumnIndex($c[0]) . $c[1],
-                $range
-            ));
+            $range = self::coordinateFromArray($range);
         }
         // no flush: the Go op-log applies merges by coordinates regardless of
         // when the rows arrive, and flushing here would end streaming early
@@ -394,10 +407,7 @@ class Worksheet
     public function unmergeCells(string|array $range): static
     {
         if (\is_array($range)) {
-            $range = \implode(':', \array_map(
-                static fn (array $c): string => Coordinate::stringFromColumnIndex($c[0]) . $c[1],
-                $range
-            ));
+            $range = self::coordinateFromArray($range);
         }
         Native::unmergeCells($this->workbookHandle(), $this->title, $range);
 
@@ -419,7 +429,7 @@ class Worksheet
     public function getStyle(string|array $cellCoordinate): Style
     {
         if (\is_array($cellCoordinate)) {
-            $cellCoordinate = Coordinate::stringFromColumnIndex($cellCoordinate[0]) . $cellCoordinate[1];
+            $cellCoordinate = self::coordinateFromArray($cellCoordinate);
         }
 
         return new Style($this, $cellCoordinate);
@@ -462,10 +472,7 @@ class Worksheet
     public function setAutoFilter(string|array $range): static
     {
         if (\is_array($range)) {
-            $range = \implode(':', \array_map(
-                static fn (array $c): string => Coordinate::stringFromColumnIndex($c[0]) . $c[1],
-                $range
-            ));
+            $range = self::coordinateFromArray($range);
         }
         $this->autoFilterRange = $range;
         Native::autoFilter($this->workbookHandle(), $this->title, $range);
