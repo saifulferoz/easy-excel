@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 /*
- * Installs the lazy class aliases that let existing code using
+ * Installs the class aliases that let existing code using
  * PhpOffice\PhpSpreadsheet\* transparently get EasyExcel\Compat\*
  * (PLAN.md §14.1: alias bootstrap instead of composer-replace).
+ * The implemented surface is bound eagerly (see eagerAliasCompat());
+ * the prepended autoloader remains as the strict-mode tripwire for
+ * unimplemented classes.
  *
  * Precedence is driven by aliasMode() (see aliasing.php):
  *
@@ -30,4 +33,15 @@ require_once __DIR__ . '/aliasing.php';
 
     $mode = \EasyExcel\aliasMode($env, \function_exists('easy_excel_new'));
     \EasyExcel\registerCompatAutoloader($mode);
+
+    // Bind the implemented surface eagerly (EASY_EXCEL_EAGER=0 restores
+    // lazy-only aliasing). PHP never autoloads for parameter/instanceof
+    // checks, so lazily-aliased Compat objects hitting a PhpOffice\* type
+    // hint would fatal; eager binding also makes the bridge independent of
+    // autoloader registration order (composer prepends itself, so a
+    // bootstrap loaded before vendor/autoload.php would otherwise lose the
+    // PhpOffice\* namespace to the real package).
+    if (\getenv('EASY_EXCEL_EAGER') !== '0') {
+        \EasyExcel\eagerAliasCompat($mode);
+    }
 })();

@@ -119,3 +119,76 @@ function registerCompatAutoloader(string $mode): void
         }
     }, true, true);
 }
+
+/**
+ * Enumerate every PhpOffice\PhpSpreadsheet\* name the Compat layer implements,
+ * by scanning the Compat source tree. Cached per process; sorted so the
+ * aliasing order is deterministic.
+ *
+ * (Not derived from .compat-surface.json — that file tracks the full upstream
+ * API surface including classes Compat does not implement.)
+ *
+ * @return list<class-string>
+ */
+function compatSurfaceClasses(): array
+{
+    static $classes = null;
+    if ($classes !== null) {
+        return $classes;
+    }
+
+    $base = __DIR__ . '/EasyExcel/Compat';
+    $classes = [];
+    $files = new \RecursiveIteratorIterator(
+        new \RecursiveDirectoryIterator($base, \FilesystemIterator::SKIP_DOTS)
+    );
+    foreach ($files as $file) {
+        if ($file->getExtension() !== 'php') {
+            continue;
+        }
+        $relative = \substr($file->getPathname(), \strlen($base) + 1, -4);
+        $classes[] = 'PhpOffice\\PhpSpreadsheet\\' . \str_replace(\DIRECTORY_SEPARATOR, '\\', $relative);
+    }
+    \sort($classes);
+
+    return $classes;
+}
+
+/**
+ * Bind the whole Compat surface up front instead of waiting for autoload.
+ *
+ * Lazy aliasing has two holes the engine cannot paper over:
+ *
+ *  1. PHP never autoloads for parameter/return/instanceof checks, so a Compat
+ *     object passed to consumer code type-hinted with the PhpOffice name
+ *     (e.g. `function f(Worksheet $ws)`) throws a TypeError unless something
+ *     else happened to reference that class first.
+ *  2. composer's autoloader prepends itself, so a bootstrap loaded before
+ *     vendor/autoload.php loses the race and the real package silently wins.
+ *
+ * Aliasing eagerly closes both: once a name is bound, neither the type check
+ * nor composer ever consults an autoloader for it. Names that are already
+ * defined (a real PhpSpreadsheet class loaded earlier) are left untouched.
+ *
+ * No-op for 'off'. Returns the number of aliases registered.
+ */
+function eagerAliasCompat(string $mode): int
+{
+    if ($mode === 'off') {
+        return 0;
+    }
+
+    $aliased = 0;
+    foreach (compatSurfaceClasses() as $class) {
+        if (\class_exists($class, false) || \interface_exists($class, false)) {
+            continue;
+        }
+        $target = compatTarget($class);
+        if (\is_string($target)) {
+            \class_alias($target, $class);
+            ++$aliased;
+        }
+    }
+
+    return $aliased;
+}
