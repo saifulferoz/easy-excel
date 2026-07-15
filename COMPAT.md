@@ -208,6 +208,20 @@ that is intentional — under all-or-nothing an uncovered class is a coverage
 gap to close (or a cue to switch the whole request to `off`/`fallback`), not
 something to paper over silently.
 
+**Eager binding.** In `strict`/`fallback` mode the bootstrap binds the whole
+implemented surface up front (`eagerAliasCompat()`) instead of waiting for
+autoload; the prepended autoloader remains only as the strict-mode tripwire
+for unimplemented classes. Lazy-only aliasing had two holes: PHP never
+autoloads for parameter/return/`instanceof` checks, so a Compat object hitting
+consumer code type-hinted with the PhpOffice name (e.g. `function
+f(Worksheet $ws)`) fataled with a TypeError unless something had referenced
+the class first; and composer prepends its own autoloader, so a bootstrap
+loaded before `vendor/autoload.php` lost the `PhpOffice\*` namespace to a
+co-installed real package. Binding ~60 classes eagerly costs ~12 ms cold
+(one-time per process). Set `EASY_EXCEL_EAGER=0` to restore lazy-only
+aliasing. Names already defined (a real PhpSpreadsheet class loaded before
+bootstrap) are left untouched.
+
 **Surface diff (CI gate).** `php/tools/compat-surface-diff.php` reflects a real
 PhpSpreadsheet install and reports every class/method/constant Compat is
 missing. Run it against a frozen baseline so a *new* gap (e.g. a PhpSpreadsheet
