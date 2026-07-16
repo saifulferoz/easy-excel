@@ -409,6 +409,25 @@ class Worksheet
         return new RowDimension($this, $row);
     }
 
+    private ?RowDimension $defaultRowDimension = null;
+
+    private ?ColumnDimension $defaultColumnDimension = null;
+
+    /**
+     * Sheet-wide default row height (sheetFormatPr). Unlike per-row heights,
+     * this stays free on streaming sheets — prefer it for uniform heights.
+     */
+    public function getDefaultRowDimension(): RowDimension
+    {
+        return $this->defaultRowDimension ??= new RowDimension($this, null);
+    }
+
+    /** Sheet-wide default column width (sheetFormatPr). */
+    public function getDefaultColumnDimension(): ColumnDimension
+    {
+        return $this->defaultColumnDimension ??= new ColumnDimension($this, null);
+    }
+
     private string $autoFilterRange = '';
 
     private ?AutoFilter $autoFilter = null;

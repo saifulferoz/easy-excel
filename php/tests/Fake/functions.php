@@ -301,6 +301,20 @@ function easy_excel_set_row_height(int $handle, string $sheet, int $row, float $
     return null;
 }
 
+function easy_excel_set_default_row_height(int $handle, string $sheet, float $height): ?string
+{
+    EasyExcelFake::$log[] = ['set_default_row_height', [$handle, $sheet, $height]];
+
+    return null;
+}
+
+function easy_excel_set_default_col_width(int $handle, string $sheet, float $width): ?string
+{
+    EasyExcelFake::$log[] = ['set_default_col_width', [$handle, $sheet, $width]];
+
+    return null;
+}
+
 function easy_excel_freeze_panes(int $handle, string $sheet, string $topLeftCell): ?string
 {
     EasyExcelFake::$log[] = ['freeze_panes', [$handle, $sheet, $topLeftCell]];
