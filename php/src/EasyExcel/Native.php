@@ -165,6 +165,16 @@ final class Native
         self::check(\easy_excel_set_row_height($handle, $sheet, $row, $height));
     }
 
+    public static function setDefaultRowHeight(int $handle, string $sheet, float $height): void
+    {
+        self::check(\easy_excel_set_default_row_height($handle, $sheet, $height));
+    }
+
+    public static function setDefaultColWidth(int $handle, string $sheet, float $width): void
+    {
+        self::check(\easy_excel_set_default_col_width($handle, $sheet, $width));
+    }
+
     public static function freezePanes(int $handle, string $sheet, string $topLeftCell): void
     {
         self::check(\easy_excel_freeze_panes($handle, $sheet, $topLeftCell));
