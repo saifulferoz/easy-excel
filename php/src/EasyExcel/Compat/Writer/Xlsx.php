@@ -53,14 +53,19 @@ class Xlsx extends BaseWriter
         if ($tmp === false) {
             throw new Exception('Could not create temporary file');
         }
+        // excelize's SaveAs validates the file extension and tempnam()
+        // produces none — stage under a .xlsx name or the native save fails
+        // with "unsupported workbook file format".
+        $staged = $tmp . '.xlsx';
         try {
-            Native::saveXlsx($handle, $tmp, $this->password);
+            Native::saveXlsx($handle, $staged, $this->password);
             $this->openFileHandle($filename);
-            $in = \fopen($tmp, 'rb');
+            $in = \fopen($staged, 'rb');
             \stream_copy_to_stream($in, $this->fileHandle);
             \fclose($in);
             $this->maybeCloseFileHandle();
         } finally {
+            @\unlink($staged);
             @\unlink($tmp);
         }
     }
