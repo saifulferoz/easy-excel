@@ -366,6 +366,24 @@ func easy_excel_set_row_height(handle int64, sheet *C.zend_string, row int64, he
 	return errOnly(wb.SetRowHeight(goStr(sheet), int(row), height))
 }
 
+//export_php:function easy_excel_set_default_row_height(int $handle, string $sheet, float $height): ?string
+func easy_excel_set_default_row_height(handle int64, sheet *C.zend_string, height float64) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return errOnly(err)
+	}
+	return errOnly(wb.SetDefaultRowHeight(goStr(sheet), height))
+}
+
+//export_php:function easy_excel_set_default_col_width(int $handle, string $sheet, float $width): ?string
+func easy_excel_set_default_col_width(handle int64, sheet *C.zend_string, width float64) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return errOnly(err)
+	}
+	return errOnly(wb.SetDefaultColWidth(goStr(sheet), width))
+}
+
 //export_php:function easy_excel_freeze_panes(int $handle, string $sheet, string $topLeftCell): ?string
 func easy_excel_freeze_panes(handle int64, sheet *C.zend_string, topLeftCell *C.zend_string) unsafe.Pointer {
 	wb, err := workbook(handle)

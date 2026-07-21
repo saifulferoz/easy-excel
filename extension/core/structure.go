@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -58,6 +59,8 @@ const (
 	opMargins
 	opRichText
 	opAutoFilterCols
+	opDefaultRowHeight
+	opDefaultColWidth
 )
 
 type pendingOp struct {
@@ -267,6 +270,61 @@ func (w *Workbook) SetRowHeight(sheet string, row int, height float64) error {
 		return nil
 	}
 	return nil
+}
+
+// SetDefaultRowHeight sets the sheet-wide default row height
+// (sheetFormatPr defaultRowHeight + customHeight), matching
+// Worksheet::getDefaultRowDimension()->setRowHeight(). Called before the
+// first row it rides the worksheet props for free (the StreamWriter
+// snapshots the preamble at the first written row); after that it queues a
+// save-time op like any other mutation of already-written state.
+func (w *Workbook) SetDefaultRowHeight(sheet string, height float64) error {
+	return w.setSheetFormatProp(sheet, opDefaultRowHeight, height)
+}
+
+// SetDefaultColWidth sets the sheet-wide default column width
+// (sheetFormatPr defaultColWidth), matching
+// Worksheet::getDefaultColumnDimension()->setWidth(). Same pre-stream-free /
+// post-stream-queued behavior as SetDefaultRowHeight.
+func (w *Workbook) SetDefaultColWidth(sheet string, width float64) error {
+	return w.setSheetFormatProp(sheet, opDefaultColWidth, width)
+}
+
+func (w *Workbook) setSheetFormatProp(sheet string, kind opKind, value float64) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return errClosed
+	}
+	st, err := w.state(sheet)
+	if err != nil {
+		return err
+	}
+	if !st.random() && st.lastRow == 0 {
+		return w.applySheetFormatProp(sheet, kind, value)
+	}
+	if st.random() {
+		if err := w.mutable(); err != nil {
+			return err
+		}
+		return w.applySheetFormatProp(sheet, kind, value)
+	}
+	// mid-stream: the preamble is already snapshotted; replay at save
+	st.pending = append(st.pending, pendingOp{kind: kind, s1: strconv.FormatFloat(value, 'f', -1, 64)})
+	return nil
+}
+
+func (w *Workbook) applySheetFormatProp(sheet string, kind opKind, value float64) error {
+	opts := &excelize.SheetPropsOptions{}
+	switch kind {
+	case opDefaultRowHeight:
+		custom := true
+		opts.DefaultRowHeight = &value
+		opts.CustomHeight = &custom
+	case opDefaultColWidth:
+		opts.DefaultColWidth = &value
+	}
+	return w.f.SetSheetProps(sheet, opts)
 }
 
 // FreezePanes freezes rows above / columns left of topLeft ("" unfreezes),
@@ -803,6 +861,12 @@ func (w *Workbook) fSetColWidth(sheet string, cw colWidthOp) error {
 
 func (w *Workbook) applyOp(sheet string, op pendingOp) error {
 	switch op.kind {
+	case opDefaultRowHeight, opDefaultColWidth:
+		value, err := strconv.ParseFloat(op.s1, 64)
+		if err != nil {
+			return err
+		}
+		return w.applySheetFormatProp(sheet, op.kind, value)
 	case opAutoFilter:
 		tl, br, err := splitRange(op.ref)
 		if err != nil {

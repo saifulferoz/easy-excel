@@ -562,3 +562,82 @@ func TestFormattedReadSeesQueuedStyles(t *testing.T) {
 		t.Errorf("formatted C2 = %v, want 1.5", v)
 	}
 }
+
+func TestDefaultDimensionsStayStreaming(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	path := filepath.Join(t.TempDir(), "defaultdims.xlsx")
+
+	// before any row: the streaming-safe report pattern
+	if err := w.SetDefaultRowHeight("Worksheet", 20); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SetDefaultColWidth("Worksheet", 14); err != nil {
+		t.Fatal(err)
+	}
+	fillRows(t, w, "Worksheet", 1, 50)
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	if w.Degraded() {
+		t.Fatal("pre-stream default dimensions forced a degrade; they must stay free")
+	}
+
+	f := reopen(t, path)
+	props, err := f.GetSheetProps("Worksheet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if props.DefaultRowHeight == nil || *props.DefaultRowHeight != 20 {
+		t.Errorf("defaultRowHeight = %v, want 20", derefF(props.DefaultRowHeight))
+	}
+	if props.CustomHeight == nil || !*props.CustomHeight {
+		t.Error("customHeight should be set alongside defaultRowHeight")
+	}
+	if props.DefaultColWidth == nil || *props.DefaultColWidth != 14 {
+		t.Errorf("defaultColWidth = %v, want 14", derefF(props.DefaultColWidth))
+	}
+	if v, _ := f.GetCellValue("Worksheet", "B50"); v != "50" {
+		t.Errorf("B50 = %q, want 50", v)
+	}
+}
+
+func TestDefaultDimensionsMidStreamReplay(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	path := filepath.Join(t.TempDir(), "defaultdims-mid.xlsx")
+
+	if err := w.SetDefaultRowHeight("Worksheet", 20); err != nil {
+		t.Fatal(err)
+	}
+	fillRows(t, w, "Worksheet", 1, 50)
+	// after rows the preamble is snapshotted; the update must replay at save
+	// (correctness over speed, like per-row heights on written rows)
+	if err := w.SetDefaultRowHeight("Worksheet", 22); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	props, err := reopen(t, path).GetSheetProps("Worksheet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if props.DefaultRowHeight == nil || *props.DefaultRowHeight != 22 {
+		t.Errorf("mid-stream defaultRowHeight = %v, want 22", derefF(props.DefaultRowHeight))
+	}
+}
+
+func derefF(f *float64) float64 {
+	if f == nil {
+		return -1
+	}
+	return *f
+}
