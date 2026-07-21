@@ -41,7 +41,12 @@ import (
 	"github.com/xiidea/easy-excel/extension/registry"
 )
 
-const version = "0.1.0"
+// version is stamped at release build time via -ldflags -X (see the build
+// stage in Dockerfile / publish.yml), so easy_excel_version() reports the
+// same vX.Y.Z tag the php-polyfill package is released under. A `var` (not
+// `const`) is required for -X to reach it. The literal here is only what a
+// host/dev build without VERSION set reports.
+var version = "0.0.0-dev"
 
 // Process-wide state: one gate, one policy, one handle table
 // (PLAN.md §7). The 10-minute idle TTL is the leak backstop for PHP code

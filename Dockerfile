@@ -69,10 +69,13 @@ RUN GEN_STUB_SCRIPT=/opt/php-src/build/gen_stub.php frankenphp extension-init ea
 # --- full FrankenPHP build --------------------------------------------------------
 
 FROM generate AS build
+# stamped into easy_excel.version at link time on tag releases (publish.yml);
+# defaults to the source-level fallback for host/CI builds (ci.yml never sets it)
+ARG VERSION=0.0.0-dev
 COPY --from=caddy:builder /usr/bin/xcaddy /usr/bin/xcaddy
 ENV CGO_ENABLED=1 \
     XCADDY_SETCAP=1 \
-    XCADDY_GO_BUILD_FLAGS="-ldflags='-w -s' -tags=nobadger,nomysql,nopgx"
+    XCADDY_GO_BUILD_FLAGS="-ldflags='-w -s -X github.com/xiidea/easy-excel/extension.version=${VERSION}' -tags=nobadger,nomysql,nopgx"
 # -D_GNU_SOURCE: zend_operators.h uses memrchr, hidden behind glibc's GNU extensions
 # cbrotli: module parity with the official frankenphp binary —
 # the runtime image's stock Caddyfile uses the br encoder, so without cbrotli

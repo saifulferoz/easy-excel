@@ -36,6 +36,17 @@ jobs:
             type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+      # easy_excel_version() (Native::version() on the PHP side) is stamped
+      # with this at link time, so it matches the vX.Y.Z tag the
+      # easy-excel-polyfill package is released under (publish-php.yml).
+      # Non-tag builds (main pushes) keep the source-level dev default.
+      - id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.0.0-dev" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -45,6 +56,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha,scope=publish
           cache-to: type=gha,scope=publish,mode=max
 
@@ -57,7 +69,9 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - name: Build binary (linux/amd64)
         run: |
-          docker build --target=build -t easy-excel-build .
+          docker build --target=build \
+            --build-arg VERSION="${GITHUB_REF#refs/tags/v}" \
+            -t easy-excel-build .
           id=$(docker create easy-excel-build)
           docker cp "$id":/usr/local/bin/frankenphp-easy-excel ./frankenphp-easy-excel-linux-amd64
           docker rm "$id"
