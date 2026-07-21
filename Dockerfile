@@ -95,3 +95,7 @@ COPY php/ /opt/easy-excel/php/
 LABEL org.opencontainers.image.title="frankenphp-easy-excel" \
       org.opencontainers.image.description="FrankenPHP with the easy-excel (Go/excelize) spreadsheet extension" \
       org.opencontainers.image.source="https://github.com/xiidea/easy-excel"
+
+# ext-zip: smoke.php inspects the saved container's sheetFormatPr XML
+# directly (php/tests/smoke.php) to verify default-dimension writes.
+RUN install-php-extensions zip

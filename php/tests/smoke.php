@@ -93,6 +93,12 @@ $ws3->getStyle('A1:C1')->applyFromArray([
 $ws3->getStyle('B2:B5000')->getNumberFormat()->setFormatCode('#,##0.00');
 $ws3->getColumnDimension('A')->setWidth(28);
 $ws3->getRowDimension(1)->setRowHeight(24);
+// sheet-wide defaults (sheetFormatPr) set before the first streamed row —
+// must ride the preamble for free, not force a degrade (real extension,
+// not the fake ABI: this is what caught easy-excel#dims shipping with the
+// PHP side wired to Go natives that didn't exist yet)
+$ws3->getDefaultRowDimension()->setRowHeight(22);
+$ws3->getDefaultColumnDimension()->setWidth(16);
 $ws3->freezePane('A2');
 $ws3->mergeCells('E1:F1');
 
@@ -115,6 +121,16 @@ $t1 = \hrtime(true);
 \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($s3, 'Xlsx')->save($styled);
 $ms = (int) ((\hrtime(true) - $t1) / 1e6);
 check(\is_file($styled) && \filesize($styled) > 5000, "styled report saved ({$ms}ms, " . \filesize($styled) . ' bytes)');
+
+$zip = new \ZipArchive();
+$zip->open($styled);
+$sheetXml = (string) $zip->getFromName('xl/worksheets/sheet1.xml');
+$zip->close();
+check(
+    \str_contains($sheetXml, 'defaultRowHeight="22"') && \str_contains($sheetXml, 'defaultColWidth="16"'),
+    'sheet-wide default row height/column width land in sheetFormatPr'
+);
+
 $s3->disconnectWorksheets();
 
 $r3 = \PhpOffice\PhpSpreadsheet\IOFactory::load($styled);
@@ -375,6 +391,23 @@ check($rs10->getCell('D1')->getValue() === 'Total: 42', 'rich text plain value r
 check($rs10->getCell('B2')->getValue() === 2500.0, 'data intact alongside chart/filter');
 $r10->disconnectWorksheets();
 @\unlink($w44);
+
+// --- extension-less target path (excelize validates extensions; PhpSpreadsheet
+// does not) -----------------------------------------------------------------
+$noExt = \sys_get_temp_dir() . '/smoke-no-ext-' . \bin2hex(\random_bytes(4));
+$s11 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+$s11->getActiveSheet()->fromArray([['a', 'b'], [1, 2]]);
+\PhpOffice\PhpSpreadsheet\IOFactory::createWriter($s11, 'Xlsx')->save($noExt);
+$s11->disconnectWorksheets();
+check(\is_file($noExt) && !\is_file($noExt . '.eexcel.xlsx'),
+    'extension-less save target exists with no leftover staging file');
+// IOFactory::identify() dispatches on extension only (a pre-existing,
+// separate limitation), so read back via an explicit reader as a consumer
+// targeting extension-less paths would.
+$r11 = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx')->load($noExt);
+check($r11->getActiveSheet()->getCell('B2')->getValue() === 2.0, 'extension-less save round-trips');
+$r11->disconnectWorksheets();
+@\unlink($noExt);
 
 // --- csv + load control surface ------------------------------------------------
 $s2 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
