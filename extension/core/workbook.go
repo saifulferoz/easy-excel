@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -858,6 +859,22 @@ func splitRange(ref string) (string, string, error) {
 
 // --- save -------------------------------------------------------------------
 
+// saveAsAnyPath writes the workbook to abs regardless of its extension.
+// excelize's SaveAs rejects paths outside the known workbook extensions,
+// but PhpSpreadsheet writes to any filename (temp staging in the shim and
+// consumer code both rely on that) — stage next to the target and rename.
+func (w *Workbook) saveAsAnyPath(abs string, opts ...excelize.Options) error {
+	switch strings.ToLower(filepath.Ext(abs)) {
+	case ".xlsx", ".xlsm", ".xltm", ".xltx":
+		return w.f.SaveAs(abs, opts...)
+	}
+	staged := abs + ".eexcel.xlsx"
+	if err := w.f.SaveAs(staged, opts...); err != nil {
+		return err
+	}
+	return os.Rename(staged, abs)
+}
+
 // SaveXlsx flushes all stream writers and writes the workbook to path; a
 // non-empty password produces an agile-encrypted container. The workbook
 // stays usable afterwards (further writes use random mode).
@@ -882,11 +899,11 @@ func (w *Workbook) SaveXlsx(path, password string) error {
 		return err
 	}
 	if password != "" {
-		return w.f.SaveAs(abs, excelize.Options{Password: password})
+		return w.saveAsAnyPath(abs, excelize.Options{Password: password})
 	}
 	patches := w.filterPatches()
 	if len(patches) == 0 {
-		return w.f.SaveAs(abs)
+		return w.saveAsAnyPath(abs)
 	}
 	tmp := abs + ".unpatched.xlsx" // excelize validates the extension
 	if err := w.f.SaveAs(tmp); err != nil {
