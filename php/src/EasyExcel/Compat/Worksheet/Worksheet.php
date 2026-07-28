@@ -711,6 +711,24 @@ class Worksheet
         return $this;
     }
 
+    /**
+     * easy-excel native sparkline API: tiny in-cell charts. Accepts a
+     * {@see Sparkline} builder or a raw native spec array. PhpSpreadsheet has no
+     * sparkline object model — this is an easy-excel extra (see COMPAT.md).
+     *
+     * @param Sparkline|array<string, mixed> $spec
+     */
+    public function addSparkline(Sparkline|array $spec): static
+    {
+        Native::addSparkline(
+            $this->workbookHandle(),
+            $this->title,
+            $spec instanceof Sparkline ? $spec->buildSpec() : $spec,
+        );
+
+        return $this;
+    }
+
     // --- internals -----------------------------------------------------------------
 
     /** @internal flush the write-behind buffer to the extension */

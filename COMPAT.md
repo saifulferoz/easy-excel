@@ -51,6 +51,7 @@ in `php/.compat-surface.json` diffs against).
 | Images | `Worksheet\Drawing`: `setName/setDescription/setPath/setCoordinates/setOffsetX/Y/setWidth/setHeight/setWorksheet` | width/height scale from the decoded PNG/JPEG/GIF dimensions; aspect kept when only one side is set |
 | Sheet protection | `getProtection()->setSheet/setPassword` + all action-lock flags | applied at save; workbook encryption is not supported |
 | Charts | **native API only**: `Worksheet::addNativeChart($cell, $spec)` / `Native::addChart` with a declarative spec (type, series, title, legend, size); types: area/bar/barStacked/col/colStacked/doughnut/line/pie/radar/scatter | PhpSpreadsheet's `Chart` object model is **not** mapped — see "Not yet supported" |
+| Sparklines | **easy-excel extra** (no PhpSpreadsheet equivalent): `Worksheet::addSparkline(Sparkline\|array)` / `Native::addSparkline`; `Worksheet\Sparkline` builder — types line/column/win_loss, high/low/first/last/negative/markers/axis/reverse toggles, style + per-marker colors | PhpSpreadsheet cannot read or write Excel sparklines at all; backed by excelize `AddSparkline` |
 | Auto-filter | `setAutoFilter` on streamed sheets | now injected into the saved container (no degrade); see divergence 16 |
 
 ## Supported (Phase 4.1 — compat completion, wave 1)

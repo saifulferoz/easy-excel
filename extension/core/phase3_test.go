@@ -252,6 +252,42 @@ func TestAddChartSaves(t *testing.T) {
 	}
 }
 
+func TestAddSparklineSaves(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	fillRows(t, w, "Worksheet", 1, 5)
+	spec := `{"type":"column","location":["G1","G2","G3","G4","G5"],
+		"dataRange":["A1:F1","A2:F2","A3:F3","A4:F4","A5:F5"],
+		"high":true,"low":true,"style":13}`
+	if err := w.AddSparkline("Worksheet", spec); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "sparkline.xlsx")
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	// data must survive the sparkline overlay
+	f := reopen(t, path)
+	if v, _ := f.GetCellValue("Worksheet", "B3"); v != "3" {
+		t.Errorf("data corrupted by sparkline: B3=%q", v)
+	}
+}
+
+func TestAddSparklineRejectsBadSpec(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	// type/dataRange mismatch is caught at queue time, before save
+	if err := w.AddSparkline("Worksheet", `{"location":["G1"]}`); err == nil {
+		t.Error("expected error for missing dataRange")
+	}
+}
+
 func TestCalculatedReadRows(t *testing.T) {
 	w, err := New(testEnv())
 	if err != nil {

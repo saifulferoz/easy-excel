@@ -61,6 +61,7 @@ const (
 	opAutoFilterCols
 	opDefaultRowHeight
 	opDefaultColWidth
+	opSparkline
 )
 
 type pendingOp struct {

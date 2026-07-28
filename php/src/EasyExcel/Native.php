@@ -240,6 +240,17 @@ final class Native
         self::check(\easy_excel_add_chart($handle, $sheet, $cell, \json_encode($spec, \JSON_THROW_ON_ERROR)));
     }
 
+    /**
+     * easy-excel native sparkline API: tiny in-cell charts. PhpSpreadsheet has
+     * no sparkline object model, so this is an easy-excel extra (see COMPAT.md).
+     *
+     * @param array<string, mixed> $spec ['location' => [...], 'dataRange' => [...], 'type', 'style', markers/high/low/… toggles, *Color]
+     */
+    public static function addSparkline(int $handle, string $sheet, array $spec): void
+    {
+        self::check(\easy_excel_add_sparkline($handle, $sheet, \json_encode($spec, \JSON_THROW_ON_ERROR)));
+    }
+
     public static function saveXlsx(int $handle, string $path, string $password = ''): void
     {
         self::check(\easy_excel_save_xlsx($handle, $path, $password));

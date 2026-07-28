@@ -412,6 +412,17 @@ function easy_excel_add_chart(int $handle, string $sheet, string $cell, string $
     return null;
 }
 
+function easy_excel_add_sparkline(int $handle, string $sheet, string $sparklineJson): ?string
+{
+    $spec = \json_decode($sparklineJson, true);
+    if (!\is_array($spec)) {
+        return 'fake: sparkline spec is not valid JSON';
+    }
+    EasyExcelFake::$log[] = ['add_sparkline', [$handle, $sheet, $spec]];
+
+    return null;
+}
+
 function easy_excel_save_xlsx(int $handle, string $path, string $password = ''): ?string
 {
     EasyExcelFake::$log[] = ['save_xlsx', [$handle, $path, $password]];

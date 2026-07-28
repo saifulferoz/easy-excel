@@ -10,6 +10,7 @@ use EasyExcel\Compat\Chart\PlotArea;
 use EasyExcel\Compat\Chart\Title;
 use EasyExcel\Compat\RichText\RichText;
 use EasyExcel\Compat\Spreadsheet;
+use EasyExcel\Compat\Worksheet\Sparkline;
 use EasyExcel\Compat\Worksheet\AutoFilter\Column;
 use EasyExcel\Compat\Worksheet\AutoFilter\Column\Rule;
 
@@ -144,6 +145,52 @@ return [
         $dt = new \EasyExcel\Compat\Chart\DataTable();
         T::ok($dt->getShowHorizontalBorder() && $dt->getShowVerticalBorder(), 'borders default on');
         T::ok($dt->getShowOutline() && $dt->getShowKeys(), 'outline/keys default on');
+    },
+
+    'sparkline: builder maps pairs and toggles onto the native spec' => function (): void {
+        EasyExcelFake::reset();
+        $s = new Spreadsheet();
+        $ws = $s->getActiveSheet();
+
+        $spark = (new Sparkline(Sparkline::TYPE_COLUMN))
+            ->addPair('G2', 'A2:F2')
+            ->addPair('G3', 'A3:F3')
+            ->setHigh(true)
+            ->setLow(true)
+            ->setStyle(13)
+            ->setSeriesColor('#FF0000')
+            ->setMarkersColor('FF00FF00'); // ARGB -> RGB
+        T::same($ws, $ws->addSparkline($spark), 'addSparkline is fluent');
+
+        $calls = EasyExcelFake::calls('add_sparkline');
+        T::same(1, \count($calls));
+        T::same('Worksheet', $calls[0][1][1], 'targets the active sheet');
+        $spec = $calls[0][1][2];
+        T::same('column', $spec['type']);
+        T::same(['G2', 'G3'], $spec['location'], 'locations in order');
+        T::same(['A2:F2', 'A3:F3'], $spec['dataRange'], 'ranges paired in order');
+        T::same(true, $spec['high']);
+        T::same(true, $spec['low']);
+        T::same(13, $spec['style']);
+        T::same('FF0000', $spec['seriesColor'], 'hash stripped');
+        T::same('00FF00', $spec['markersColor'], 'ARGB alpha stripped');
+    },
+
+    'sparkline: raw spec array passes through and type/color are validated' => function (): void {
+        EasyExcelFake::reset();
+        $s = new Spreadsheet();
+        $ws = $s->getActiveSheet();
+
+        // raw array bypasses the builder entirely
+        $ws->addSparkline(['type' => 'line', 'location' => ['B1'], 'dataRange' => ['C1:H1']]);
+        $spec = EasyExcelFake::calls('add_sparkline')[0][1][2];
+        T::same('line', $spec['type']);
+        T::same(['B1'], $spec['location']);
+
+        // builder guards
+        T::throws(\EasyExcel\Compat\Exception::class, static fn () => new Sparkline('pie'));
+        T::throws(\EasyExcel\Compat\Exception::class, static fn () => (new Sparkline())->buildSpec()); // no pairs
+        T::throws(\EasyExcel\Compat\Exception::class, static fn () => (new Sparkline())->setSeriesColor('nothex'));
     },
 
     'auto filter column rules: build excelize expressions' => function (): void {

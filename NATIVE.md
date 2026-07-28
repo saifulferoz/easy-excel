@@ -189,6 +189,16 @@ easy_excel_add_chart(int $handle, string $sheet, string $cell, string $chartJson
 //  "legend":{"position":"bottom"},"width":600,"height":300}
 // types: area, bar, barStacked, col, colStacked, doughnut, line, pie,
 //        radar, scatter
+
+easy_excel_add_sparkline(int $handle, string $sheet, string $sparklineJson): ?string
+// Tiny in-cell charts (no PhpSpreadsheet equivalent). One location cell per
+// data range; the two arrays are paired positionally.
+// {"type":"column",
+//  "location":["G2","G3"],"dataRange":["A2:F2","A3:F3"],
+//  "style":13,"high":true,"low":true,"markers":true,
+//  "seriesColor":"638EC6","markersColor":"FF0000"}
+// types: line, column, win_loss
+// toggles: high, low, first, last, negative, markers, axis, reverse
 ```
 
 ## Saving

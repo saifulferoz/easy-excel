@@ -121,6 +121,15 @@ func (w *Workbook) AddChart(sheet, cell, jsonSpec string) error {
 	return w.queueOp(sheet, pendingOp{kind: opChart, ref: cell, s1: jsonSpec})
 }
 
+// AddSparkline queues a sparkline group (easy-excel native JSON spec). Unlike a
+// chart it is sheet-scoped (locations/ranges live in the spec), so ref is empty.
+func (w *Workbook) AddSparkline(sheet, jsonSpec string) error {
+	if _, err := compat.TranslateSparkline(jsonSpec); err != nil {
+		return err
+	}
+	return w.queueOp(sheet, pendingOp{kind: opSparkline, ref: "", s1: jsonSpec})
+}
+
 // applyOpPhase3 executes the queued Phase-3 ops in random-access mode.
 func (w *Workbook) applyOpPhase3(sheet string, op pendingOp) error {
 	switch op.kind {
@@ -178,6 +187,12 @@ func (w *Workbook) applyOpPhase3(sheet string, op pendingOp) error {
 			return err
 		}
 		return w.f.AddChart(sheet, op.ref, chart)
+	case opSparkline:
+		opts, err := compat.TranslateSparkline(op.s1)
+		if err != nil {
+			return err
+		}
+		return w.f.AddSparkline(sheet, opts)
 	case opUnmerge:
 		tl, br, err := splitRange(op.ref)
 		if err != nil {
