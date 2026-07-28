@@ -103,6 +103,49 @@ return [
         T::same(['bar', 'line'], $types);
     },
 
+    'chart facade: data table maps onto the native spec' => function (): void {
+        EasyExcelFake::reset();
+        $s = new Spreadsheet();
+        $ws = $s->getActiveSheet();
+        $values = [new DataSeriesValues('Number', 'Worksheet!$B$2:$B$5', null, 4)];
+        $series = new DataSeries(DataSeries::TYPE_BARCHART, DataSeries::GROUPING_CLUSTERED, [0], [], [], $values);
+
+        $plotArea = new PlotArea(null, [$series]);
+        $dataTable = (new \EasyExcel\Compat\Chart\DataTable())->setShowKeys(false);
+        T::same($plotArea, $plotArea->setDataTable($dataTable), 'setDataTable is fluent');
+        T::same($dataTable, $plotArea->getDataTable(), 'data table round-trips');
+
+        $ws->addChart((new Chart('dt', null, null, $plotArea))->setTopLeftPosition('A1'));
+        $spec = EasyExcelFake::calls('add_chart')[0][1][3];
+        T::same(true, $spec['dataTable']['show'], 'data table requested');
+        T::same(false, $spec['dataTable']['showKeys'], 'showKeys reflects setter');
+    },
+
+    'chart facade: data table defaults and pie suppression' => function (): void {
+        EasyExcelFake::reset();
+        $s = new Spreadsheet();
+        $ws = $s->getActiveSheet();
+        $values = [new DataSeriesValues('Number', 'Worksheet!$B$2:$B$5', null, 4)];
+
+        // no data table attached -> no dataTable block
+        $col = new DataSeries(DataSeries::TYPE_BARCHART, DataSeries::GROUPING_CLUSTERED, [0], [], [], $values);
+        $ws->addChart((new Chart('plain', null, null, new PlotArea(null, [$col])))->setTopLeftPosition('A1'));
+
+        // pie charts do not render a data table even when one is attached
+        $pie = new DataSeries(DataSeries::TYPE_PIECHART, DataSeries::GROUPING_STANDARD, [0], [], [], $values);
+        $pieArea = (new PlotArea(null, [$pie]))->setDataTable(new \EasyExcel\Compat\Chart\DataTable());
+        $ws->addChart((new Chart('pie', null, null, $pieArea))->setTopLeftPosition('E1'));
+
+        $specs = \array_map(static fn (array $c): array => $c[1][3], EasyExcelFake::calls('add_chart'));
+        T::ok(!isset($specs[0]['dataTable']), 'no data table block without one attached');
+        T::ok(!isset($specs[1]['dataTable']), 'pie chart suppresses the data table');
+
+        // defaults per PhpSpreadsheet
+        $dt = new \EasyExcel\Compat\Chart\DataTable();
+        T::ok($dt->getShowHorizontalBorder() && $dt->getShowVerticalBorder(), 'borders default on');
+        T::ok($dt->getShowOutline() && $dt->getShowKeys(), 'outline/keys default on');
+    },
+
     'auto filter column rules: build excelize expressions' => function (): void {
         EasyExcelFake::reset();
         $s = new Spreadsheet();

@@ -46,7 +46,7 @@ RUN install-php-extensions gd zip intl xsl mbstring
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 ENV EASY_EXCEL_ALIAS=off COMPOSER_ALLOW_SUPERUSER=1
 COPY php/ php/
-RUN composer --working-dir=php require --no-interaction --no-progress --no-audit phpoffice/phpspreadsheet
+RUN composer --working-dir=php require --no-interaction --no-progress --no-audit "phpoffice/phpspreadsheet:^5.9"
 
 FROM compat-surface-deps AS compat-surface
 RUN php php/tools/compat-surface-diff.php --members --baseline=php/.compat-surface.json

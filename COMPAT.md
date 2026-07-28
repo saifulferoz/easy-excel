@@ -4,6 +4,9 @@ Compatibility is **measured, not asserted** (PLAN.md §5): this file tracks
 what the shim implements, what intentionally diverges, and what throws a
 clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 
+Baselined against **phpoffice/phpspreadsheet 5.9.0** (the surface the CI gate
+in `php/.compat-surface.json` diffs against).
+
 ## Supported (Phase 1)
 
 | Area | API | Notes |
@@ -20,7 +23,9 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Writer\Csv | `set/getDelimiter`, `setEnclosure` (only `"`), `set/getLineEnding`, `set/getUseBOM`, `set/getSheetIndex`, `save` (paths, stream-wrapper URLs, open resources) | plus `setSanitizeFormulas()` (easy-excel extra, opt-in OWASP guard) |
 | Writer\Html | `save`, `generateHtmlAll`, `generateHTMLHeader`, `generateStyles`, `generateNavigation`, `generateSheetData`, `generateHTMLFooter`, `set/getSheetIndex`, `writeAllSheets`, `set/getGenerateSheetNavigationBlock`, `set/getUseInlineCss`, `set/getEmbedImages`, `set/getImagesRoot`, `set/getLineEnding`, `getOrientation`, `setEditHtmlCallback`, plus the table/conditional/boolean knobs | **pure PHP** (works with or without the extension); renders formatted cell values into sheet tables with merged-cell row/colspans. Fine-grained per-cell styling and image embedding are not rendered — a single shared stylesheet is emitted |
 | Reader\Xlsx | `load` (paths and stream-wrapper URLs), `setReadDataOnly`, `canRead` | wrapper sources are staged through a local temp file before the native open |
-| Reader\Csv | `load`, `setDelimiter`, `setEnclosure`, `setSheetIndex`, `canRead` | streams in 1k-row chunks |
+| Reader\Csv | `load`, `set/getDelimiter`, `setEnclosure`, `set/getEscapeCharacter`, `set/getTestAutoDetect`, `setSheetIndex`, `canRead`, `listWorksheetInfo`, `listWorksheetNames` | streams in 1k-row chunks; implements `Reader\IReader2` |
+| Reader\CsvNoEscape | inherits `Reader\Csv`; escape character pinned to `''` and auto-detect to `false` (both re-enable attempts throw) | strict RFC-4180 parsing — backslashes are treated literally |
+| Reader\IReader2 | `load`, `listWorksheetInfo`, `listWorksheetNames` | PhpSpreadsheet 5.8+ listing contract; the Csv reader implements it |
 | Value binding | DefaultValueBinder semantics: numeric strings → numbers (leading-zero strings preserved), `=…` → formula, `DateTimeInterface` → Excel serial | |
 
 ## Supported (Phase 2 — formatting & structure)
@@ -86,7 +91,7 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 |---|---|---|
 | Rich text cells | `new RichText`, `createText/createTextRun`, `Run::getFont()` (bold/italic/size/name/underline/color…), `setCellValue($coord, $richText)` | a plain placeholder keeps dimensions correct; the formatted runs apply at save (divergence 22) |
 | Memory drawings | `Worksheet\MemoryDrawing` (GD resource → PNG/JPEG/GIF, `setImageResource`, `setRenderingFunction`, size/offset, `setWorksheet`) | rendered in PHP, sent to the extension as base64 bytes; requires ext-gd |
-| Charts | the PhpSpreadsheet `Chart\*` object model: `Chart`, `DataSeries` (bar/column ±stacked, line, area, pie, doughnut, scatter, radar; bar/col direction), `DataSeriesValues`, `PlotArea`, `Legend`, `Title`, X/Y axis labels; `Worksheet::addChart` | mapped onto the native chart spec; series data sources are excelize formula strings |
+| Charts | the PhpSpreadsheet `Chart\*` object model: `Chart`, `DataSeries` (bar/column ±stacked, line, area, pie, doughnut, scatter, radar; bar/col direction), `DataSeriesValues`, `PlotArea`, `Legend`, `Title`, `DataTable` (`PlotArea::setDataTable`, 5.9), X/Y axis labels; `Worksheet::addChart` | mapped onto the native chart spec; series data sources are excelize formula strings. Data tables render under area/bar/col/line plots (Excel/excelize limit); the show-keys toggle is honoured, and the H/V border flags collapse onto excelize's single outline |
 | Auto-filter rules | `getAutoFilter()->getColumn($col)->createRule()->setRule($op, $value)`, AND/OR join | column rules force the model path (FilterColumn XML); excelize doesn't hide rows automatically (divergence 23) |
 
 ## Documented divergences
@@ -228,7 +233,7 @@ missing. Run it against a frozen baseline so a *new* gap (e.g. a PhpSpreadsheet
 version bump adding constants) fails CI instead of surfacing at runtime:
 
 ```
-composer require --dev phpoffice/phpspreadsheet
+composer require --dev "phpoffice/phpspreadsheet:^5.9"
 php tools/compat-surface-diff.php --members                              # full report
 php tools/compat-surface-diff.php --baseline=.compat-surface.json        # gate (exit 1 on new gaps)
 php tools/compat-surface-diff.php --update-baseline=.compat-surface.json # bump deliberately

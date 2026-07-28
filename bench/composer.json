@@ -3,7 +3,7 @@
     "description": "Phase-0 benchmark rig: identical workloads across easy-excel and the PHP spreadsheet ecosystem (PLAN.md §10).",
     "require": {
         "php": ">=8.3",
-        "phpoffice/phpspreadsheet": "^5.0 || ^4.0",
+        "phpoffice/phpspreadsheet": "^5.9",
         "openspout/openspout": "^4.24",
         "avadim/fast-excel-writer": "^6.0",
         "rap2hpoutre/fast-excel": "^5.6"

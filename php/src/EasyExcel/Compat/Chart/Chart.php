@@ -87,7 +87,27 @@ class Chart
             $spec['yAxisTitle'] = $this->yAxisLabel->getCaptionText();
         }
 
+        $dataTable = $this->plotArea->getDataTable();
+        if ($dataTable !== null && $this->supportsDataTable($spec['type'])) {
+            // excelize exposes a single outline toggle; the horizontal/vertical
+            // border flags collapse onto it (data table drawn iff either edge
+            // or the outline is requested), matching Excel's rendering where a
+            // bordered table implies an outline.
+            $spec['dataTable'] = [
+                'show' => true,
+                'showKeys' => $dataTable->getShowKeys(),
+            ];
+        }
+
         return $spec;
+    }
+
+    /** Excel/excelize only render a data table under area/bar/col/line plots. */
+    private function supportsDataTable(string $nativeType): bool
+    {
+        return \in_array($nativeType, [
+            'area', 'bar', 'barStacked', 'col', 'colStacked', 'line',
+        ], true);
     }
 
     private function nativeType(DataSeries $group): string

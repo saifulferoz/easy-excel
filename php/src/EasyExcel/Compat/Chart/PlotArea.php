@@ -7,6 +7,8 @@ namespace EasyExcel\Compat\Chart;
 /** Holds the chart's data series (the layout argument is ignored). */
 class PlotArea
 {
+    private ?DataTable $dataTable = null;
+
     /** @param list<DataSeries> $plotSeries */
     public function __construct(private mixed $layout = null, private array $plotSeries = [])
     {
@@ -21,5 +23,17 @@ class PlotArea
     public function getPlotGroupByIndex(int $index): DataSeries
     {
         return $this->plotSeries[$index];
+    }
+
+    public function setDataTable(DataTable $dataTable): static
+    {
+        $this->dataTable = $dataTable;
+
+        return $this;
+    }
+
+    public function getDataTable(): ?DataTable
+    {
+        return $this->dataTable;
     }
 }

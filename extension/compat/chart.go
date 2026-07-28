@@ -25,6 +25,10 @@ type chartSpec struct {
 	YAxisTitle string `json:"yAxisTitle"`
 	Width      uint   `json:"width"`
 	Height     uint   `json:"height"`
+	DataTable  struct {
+		Show     bool `json:"show"`
+		ShowKeys bool `json:"showKeys"`
+	} `json:"dataTable"`
 }
 
 var chartTypes = map[string]excelize.ChartType{
@@ -82,6 +86,12 @@ func TranslateChart(jsonSpec string) (*excelize.Chart, error) {
 	}
 	if spec.Height > 0 {
 		chart.Dimension.Height = spec.Height
+	}
+	if spec.DataTable.Show {
+		// excelize only renders a data table for area/bar/col/line groupings;
+		// the compat layer already gates on plot type, so we set it directly.
+		chart.PlotArea.ShowDataTable = true
+		chart.PlotArea.ShowDataTableKeys = spec.DataTable.ShowKeys
 	}
 	return chart, nil
 }

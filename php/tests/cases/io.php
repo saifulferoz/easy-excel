@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use EasyExcel\Compat\IOFactory;
 use EasyExcel\Compat\Reader\Csv as CsvReader;
+use EasyExcel\Compat\Reader\CsvNoEscape;
+use EasyExcel\Compat\Reader\IReader2;
 use EasyExcel\Compat\Reader\Xlsx as XlsxReader;
 use EasyExcel\Compat\Shared\StreamPath;
 use EasyExcel\Compat\Spreadsheet;
@@ -300,6 +302,62 @@ return [
             T::same('name', $ws->getCell('A1')->getValue());
             T::same(3.0, $ws->getCell('B2')->getValue(), 'numeric string bound to number');
             T::same('0150', $ws->getCell('B3')->getValue(), 'leading zero preserved');
+        } finally {
+            @\unlink($file);
+        }
+    },
+
+    'reader: csv implements IReader2 and lists worksheet info/names' => function (): void {
+        $file = \tempnam(\sys_get_temp_dir(), 'eex') . '.csv';
+        \file_put_contents($file, "a,b,c\n1,2,3\n4,5,6\n");
+        try {
+            $reader = new CsvReader();
+            T::ok($reader instanceof IReader2, 'csv reader satisfies IReader2');
+            T::same(['Worksheet'], $reader->listWorksheetNames($file), 'single worksheet name');
+
+            $info = $reader->listWorksheetInfo($file);
+            T::same(1, \count($info), 'one worksheet');
+            T::same(3, $info[0]['totalRows'], 'row count');
+            T::same(3, $info[0]['totalColumns'], 'column count');
+            T::same('C', $info[0]['lastColumnLetter'], 'last column letter');
+            T::same(2, $info[0]['lastColumnIndex'], 'last column index');
+        } finally {
+            @\unlink($file);
+        }
+    },
+
+    'reader: csv escape character is configurable and round-trips' => function (): void {
+        $reader = new CsvReader();
+        T::same('', $reader->getEscapeCharacter(), 'default escape is empty string');
+        T::same($reader, $reader->setEscapeCharacter('\\'), 'setter is fluent');
+        T::same('\\', $reader->getEscapeCharacter(), 'escape stored');
+        T::ok($reader->getTestAutoDetect(), 'auto-detect on by default');
+        T::same($reader, $reader->setTestAutoDetect(false), 'auto-detect setter fluent');
+        T::ok(!$reader->getTestAutoDetect(), 'auto-detect toggled off');
+    },
+
+    'reader: CsvNoEscape enforces the no-escape contract' => function (): void {
+        $reader = new CsvNoEscape();
+        T::ok($reader instanceof CsvReader, 'extends the base Csv reader');
+        T::same('', $reader->getEscapeCharacter(), 'escaping disabled by construction');
+        T::ok(!$reader->getTestAutoDetect(), 'auto-detect disabled by construction');
+        // empty escape / false auto-detect are allowed no-ops
+        T::same($reader, $reader->setEscapeCharacter(''), 'empty escape accepted');
+        T::same($reader, $reader->setTestAutoDetect(false), 'false auto-detect accepted');
+        // anything else is rejected
+        T::throws(\EasyExcel\Compat\Exception::class, static fn () => $reader->setEscapeCharacter('\\'));
+        T::throws(\EasyExcel\Compat\Exception::class, static fn () => $reader->setTestAutoDetect(true));
+    },
+
+    'reader: CsvNoEscape treats backslashes literally' => function (): void {
+        $file = \tempnam(\sys_get_temp_dir(), 'eex') . '.csv';
+        // a trailing backslash inside a quoted field must survive verbatim
+        \file_put_contents($file, "path,note\n\"C:\\\",drive\n");
+        try {
+            $s = (new CsvNoEscape())->load($file);
+            $ws = $s->getActiveSheet();
+            T::same('C:\\', $ws->getCell('A2')->getValue(), 'backslash not consumed as escape');
+            T::same('drive', $ws->getCell('B2')->getValue(), 'following field intact');
         } finally {
             @\unlink($file);
         }
