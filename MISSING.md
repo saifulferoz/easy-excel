@@ -20,6 +20,13 @@ GD `MemoryDrawing`, the PhpSpreadsheet `Chart\*` object model
 later audit of two production report apps found further gaps, listed below;
 they are a mix of by-design exclusions and unclaimed surface.
 
+Closed by wave 5.3 (2026-08-19): `setBreak()` (+`ByColumnAndRow` and the
+`BREAK_*` constants) via `excelize.InsertPageBreak`/`RemovePageBreak`;
+`setSelectedCells()` (+aliases), merged into the sheet's pane record so it
+composes with `freezePane()` rather than clobbering it; and
+`calculateColumnWidths()` as an accepted no-op. 2 new bridge exports (60
+total), 10 Go tests, 18 shim tests — 217 passing.
+
 Closed by wave 5.1 (2026-08-19): `Shared\StringHelper` (found by checking
 every `PhpOffice\*` import in the four consumer writer files against Compat —
 33 of 34 now resolve). Wave 5.1's main work was consumer-side: re-parenting
@@ -89,12 +96,9 @@ request.
   in wave 5.2: `setChartRenderer()` is accepted and ignored)
 
 **Worksheet methods**
-- `setBreak()` (6) — manual page breaks
 - `getCellCollection()` (2) — out by design: cell data lives in Go, not in a
-  PHP collection
-- `calculateColumnWidths()` (2) — auto-size is approximated at save
-  (COMPAT.md §10)
-- `setSelectedCells()` (1)
+  PHP collection. Both call sites are inside the HTML writers that wave 5.1
+  decoupled
 
 **Not exercised by either app** (still gaps, lower priority)
 - Auto-filter **column rule** introspection (range getter landed in 4.2)

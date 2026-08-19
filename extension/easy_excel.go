@@ -398,6 +398,24 @@ func easy_excel_freeze_panes(handle int64, sheet *C.zend_string, topLeftCell *C.
 	return errOnly(wb.FreezePanes(goStr(sheet), goStr(topLeftCell)))
 }
 
+//export_php:function easy_excel_set_break(int $handle, string $sheet, string $cell, int $breakType): ?string
+func easy_excel_set_break(handle int64, sheet *C.zend_string, cell *C.zend_string, breakType int64) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return errOnly(err)
+	}
+	return errOnly(wb.SetBreak(goStr(sheet), goStr(cell), int(breakType)))
+}
+
+//export_php:function easy_excel_set_selection(int $handle, string $sheet, string $range): ?string
+func easy_excel_set_selection(handle int64, sheet *C.zend_string, ref *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return errOnly(err)
+	}
+	return errOnly(wb.SetSelection(goStr(sheet), goStr(ref)))
+}
+
 //export_php:function easy_excel_auto_filter(int $handle, string $sheet, string $range): ?string
 func easy_excel_auto_filter(handle int64, sheet *C.zend_string, ref *C.zend_string) unsafe.Pointer {
 	wb, err := workbook(handle)

@@ -180,6 +180,16 @@ final class Native
         self::check(\easy_excel_freeze_panes($handle, $sheet, $topLeftCell));
     }
 
+    public static function setBreak(int $handle, string $sheet, string $cell, int $breakType): void
+    {
+        self::check(\easy_excel_set_break($handle, $sheet, $cell, $breakType));
+    }
+
+    public static function setSelection(int $handle, string $sheet, string $range): void
+    {
+        self::check(\easy_excel_set_selection($handle, $sheet, $range));
+    }
+
     public static function autoFilter(int $handle, string $sheet, string $range): void
     {
         self::check(\easy_excel_auto_filter($handle, $sheet, $range));

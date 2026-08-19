@@ -100,6 +100,14 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Drawings | `Worksheet\BaseDrawing` | extracted as the genuine shared parent of `Drawing` and `MemoryDrawing` (name, description, coordinates, offsets, size, owning sheet) rather than added alongside them; attachment stays per-subclass because each sends a different payload |
 | Shared helpers | `Shared\StringHelper` (`stringIncrement`, `formatNumber`, `convertToString`, control-character escaping both ways, multibyte case/substring/count, separators), `Shared\Drawing` (points/pixels/EMU/cm/inch/degree conversions, `cellDimensionToPixels`, `pixelsToCellDimension`), `Shared\Font` (`getDefaultRowHeightByFont`, `getCharacterWidth`, auto-size method), `Shared\File` (`sysGetTempDir`, `temporaryFilename`, upload-temp-dir toggle, `fileExists`, `realpath`) | pure PHP. `Shared\File::sysGetTempDir()` is canonicalised with `realpath()` so it matches the paths `tempnam()` actually returns (macOS reports `/var/…` but creates under `/private/var/…`). `StringHelper` is verified byte-identical to real PhpSpreadsheet across every method the writers call, including `formatNumber(null) === ''` and `stringIncrement` via `str_increment()` (bare `++` on a string is deprecated in PHP 8.3+) |
 
+## Supported (Phase 5.3 — page breaks & selection)
+
+| Area | API | Notes |
+|---|---|---|
+| Page breaks | `Worksheet::setBreak(+ByColumnAndRow)`, `BREAK_NONE`/`BREAK_ROW`/`BREAK_COLUMN`/`BREAK_ROW_MAX_COLUMN` | `excelize.InsertPageBreak`/`RemovePageBreak`, applied at save like the rest of the non-streamable surface (divergence 11). The reference is normalised to the requested axis: `setBreak('O24', BREAK_ROW)` splits above row 24 only, never also left of column O |
+| Selection | `Worksheet::setSelectedCells(+setSelectedCell/ByColumnAndRow)` | excelize carries selection inside the **pane** record, not `ViewOptions`, so the existing pane state is read back and merged — selecting a cell after `freezePane()` keeps the freeze instead of silently undoing it |
+| Auto-size | `Worksheet::calculateColumnWidths()` | accepted no-op returning `$this`: auto-size is approximated in Go at save (divergence 10), so there is nothing to precompute. Callers need not branch on the engine |
+
 ## Documented divergences
 
 1. **`toArray(formatData: false)` types** — values come back from excelize as
@@ -212,6 +220,15 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     the common families plus a linear approximation elsewhere, consistent with
     the save-time auto-size approximation (divergence 10).
 
+28. **Page breaks apply at save** — like other non-streamable ops, a break is
+    queued and written when the workbook is flushed. `BREAK_NONE` removes a
+    break at that reference rather than adding one, matching
+    PhpSpreadsheet's default argument.
+29. **Selection merges into panes** — excelize models selection as part of the
+    pane record. easy-excel reads the sheet's current panes back and folds the
+    selection in, so freeze and selection compose. Setting a selection on a
+    sheet with no panes writes a pane-less selection, as Excel does.
+
 
 ## Aliasing modes
 
@@ -302,15 +319,6 @@ observed consumer yet.
 - `Chart\Renderer\*` (incl. `JpGraph`) — no renderer concept; charts are
   emitted natively as Excel chart parts, never rasterized in PHP.
   (`Settings::setChartRenderer()` itself is accepted and ignored — wave 5.2.)
-
-### Worksheet methods — [audited]
-
-- `setBreak()` — manual page breaks
-- `setSelectedCells()`
-- `calculateColumnWidths()` — auto-size is approximated at save instead
-  (divergence 10)
-- `getCellCollection()` — out by design: cell data lives in Go, not in a PHP
-  collection
 
 ### Formats
 

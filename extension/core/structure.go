@@ -61,6 +61,8 @@ const (
 	opAutoFilterCols
 	opDefaultRowHeight
 	opDefaultColWidth
+	opPageBreak
+	opSelection
 )
 
 type pendingOp struct {

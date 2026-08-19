@@ -322,6 +322,36 @@ function easy_excel_freeze_panes(int $handle, string $sheet, string $topLeftCell
     return null;
 }
 
+function easy_excel_set_break(int $handle, string $sheet, string $cell, int $breakType): ?string
+{
+    EasyExcelFake::$log[] = ['set_break', [$handle, $sheet, $cell, $breakType]];
+
+    // Mirrors the Go guard so the shim's error path is exercised in tests.
+    if (!\in_array($breakType, [0, 1, 2], true)) {
+        return "easy-excel: unsupported break type {$breakType}";
+    }
+    if (\preg_match('/^[A-Z]+[1-9][0-9]*$/', $cell) !== 1) {
+        return "easy-excel: invalid break cell \"{$cell}\"";
+    }
+
+    return null;
+}
+
+function easy_excel_set_selection(int $handle, string $sheet, string $range): ?string
+{
+    EasyExcelFake::$log[] = ['set_selection', [$handle, $sheet, $range]];
+
+    if ($range === '') {
+        return null;
+    }
+    $topLeft = \explode(':', $range)[0];
+    if (\preg_match('/^[A-Z]+[1-9][0-9]*$/', $topLeft) !== 1) {
+        return "easy-excel: invalid selection \"{$range}\"";
+    }
+
+    return null;
+}
+
 function easy_excel_auto_filter(int $handle, string $sheet, string $range): ?string
 {
     EasyExcelFake::$log[] = ['auto_filter', [$handle, $sheet, $range]];

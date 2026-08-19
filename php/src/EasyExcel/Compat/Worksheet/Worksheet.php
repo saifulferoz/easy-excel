@@ -32,6 +32,14 @@ class Worksheet
     /** Buffered rows before an automatic flush. */
     public const FLUSH_AFTER_ROWS = 512;
 
+    public const BREAK_NONE = 0;
+
+    public const BREAK_ROW = 1;
+
+    public const BREAK_COLUMN = 2;
+
+    public const BREAK_ROW_MAX_COLUMN = 16383;
+
     /** @var array<int, array<int, mixed>> row => col => scalar|[marker, value] */
     private array $buffer = [];
 
@@ -543,6 +551,67 @@ class Worksheet
     public function unfreezePane(): static
     {
         return $this->freezePane(null);
+    }
+
+    /**
+     * Set a manual page break at a cell (wave 5.3).
+     *
+     * `BREAK_ROW` splits above the cell's row, `BREAK_COLUMN` to the left of
+     * its column, and `BREAK_NONE` removes a break there. Applied at save like
+     * the rest of the non-streamable surface (COMPAT.md divergence 11).
+     */
+    public function setBreak(string|array $coordinate, int $break = self::BREAK_NONE): static
+    {
+        if (\is_array($coordinate)) {
+            $coordinate = Coordinate::stringFromColumnIndex($coordinate[0]) . $coordinate[1];
+        }
+        Native::setBreak($this->workbookHandle(), $this->title, $coordinate, $break);
+
+        return $this;
+    }
+
+    public function setBreakByColumnAndRow(int $columnIndex, int $row, int $break = self::BREAK_NONE): static
+    {
+        return $this->setBreak(Coordinate::stringFromColumnIndex($columnIndex) . $row, $break);
+    }
+
+    /**
+     * Set the selected cell or range (wave 5.3).
+     *
+     * Merges into the sheet's existing pane state, so selecting a cell after
+     * freezePane() keeps the freeze rather than silently undoing it.
+     */
+    public function setSelectedCells(string|array $coordinate): static
+    {
+        if (\is_array($coordinate)) {
+            $coordinate = Coordinate::stringFromColumnIndex($coordinate[0]) . $coordinate[1];
+        }
+        Native::setSelection($this->workbookHandle(), $this->title, $coordinate);
+
+        return $this;
+    }
+
+    public function setSelectedCell(string $coordinate): static
+    {
+        return $this->setSelectedCells($coordinate);
+    }
+
+    public function setSelectedCellByColumnAndRow(int $columnIndex, int $row): static
+    {
+        return $this->setSelectedCells(Coordinate::stringFromColumnIndex($columnIndex) . $row);
+    }
+
+    /**
+     * Accepted no-op, returning $this for chaining.
+     *
+     * PhpSpreadsheet measures rendered text here to size auto-width columns.
+     * easy-excel approximates auto-size in Go at save time instead (COMPAT.md
+     * divergence 10), so there is nothing to precompute — but callers that
+     * invoke this before saving should not have to branch on the engine.
+     */
+    public function calculateColumnWidths(): static
+    {
+        return $this;
     }
 
     public function getComment(string|array $cellCoordinate): Comment
