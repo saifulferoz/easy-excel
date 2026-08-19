@@ -513,6 +513,110 @@ track there), PHP callbacks inside per-cell hot paths.
 
 ---
 
+### Phase 5 — consumer-driven gap closure (planned)
+
+Scoped from an audit of two production Symfony report apps (erp-add-ons,
+budget-service; 100 PhpSpreadsheet-using files) against the shipped Compat
+tree. Only APIs those apps actually call are in scope — MISSING.md carries
+per-API call counts. Effort: S ≈ hours, M ≈ a day, L ≈ days.
+
+**Architectural finding that reorders everything.** The apps' `HTMLWriter
+extends Html` subclasses looked like the hardest blocker (~1800 / ~1400
+lines each). They are not: each redeclares 62–77 methods, 40–45 of them
+`private`, and calls `parent::` exactly once — `__construct`. They are
+standalone renderers wearing an `extends` clause, inheriting no behavior.
+So the fix is not "make Compat\Writer\Html inheritance-compatible" (which
+would mean porting PhpSpreadsheet's private HTML internals verbatim and
+freezing them as public API forever — a permanent maintenance tax for two
+consumers). The fix is to sever the inheritance. See wave 5.1.
+
+**Wave 5.1 — unblock the writers (consumer-side, no shim change)**
+
+| Item | Approach | Effort |
+|---|---|---|
+| `HTMLWriter extends Html` | Change to `extends BaseWriter` (or implement `IWriter`). The subclasses already supply every method they use; only `__construct` comes from the parent. Verified: 1 `parent::` call per app | S |
+| `PDFWriter extends HTMLWriter` | Unaffected once its parent stands alone — it extends the app's own class, not ours | S |
+| `Writer\Pdf` | Stays out of the native engine. The apps never used PhpSpreadsheet's PDF writer directly; they render their own HTML → mPDF | — |
+
+Exit: both apps' HTML/PDF paths run against Compat with no shim change.
+This is the highest-ROI wave and it costs the *shim* nothing.
+
+**Wave 5.2 — trivially missing surface (S each, mechanical)**
+
+| Item | Approach | Effort |
+|---|---|---|
+| `Writer\Exception`, `Reader\Exception`, `Calculation\Exception` | Three subclasses of `Compat\Exception`; throw sites updated to the specific type. Unblocks `catch` blocks in 24 call sites | S |
+| `Reader\IReader` | Interface extracted from the existing `Reader\Xlsx`/`Csv` contract | S |
+| `Settings` | Class with `setChartRenderer()` accepted as a documented no-op (charts are native), plus the cache/locale accessors PhpSpreadsheet exposes | S |
+| `Cell\CellAddress`, `Cell\AddressRange` | Pure-PHP value objects over the existing `Coordinate` helpers | S |
+| `Worksheet\BaseDrawing` | Extract the shared parent of the existing `Drawing` / `MemoryDrawing` | S |
+| `Shared\File`, `Shared\Font`, `Shared\Drawing` | Thin static helpers; `Shared\Font` needs only the metrics the apps call | S |
+
+**Wave 5.3 — page breaks + worksheet methods**
+
+| Item | Approach | Effort |
+|---|---|---|
+| `Worksheet::setBreak()` | `excelize.InsertPageBreak` / `RemovePageBreak` (verified present, v2.11 `sheet.go`). New flat ABI call + save-time op like other non-streamable ops | M |
+| `setSelectedCells()` | Maps to excelize's sheet view selection | S |
+| `calculateColumnWidths()` | Accept as a no-op returning `$this` — auto-size is already approximated at save (divergence 10). Document, don't implement | S |
+| `getCellCollection()` | **Won't fix.** Cell data lives in Go; materializing a PHP collection defeats the constant-memory design. Both call sites are inside the HTML writers, which wave 5.1 already decouples | — |
+
+**Wave 5.4 — chart axis model (the one real feature gap)**
+
+The chart pipeline is already a clean `chartSpec` JSON → `excelize.Chart`
+translation (`extension/compat/chart.go`), and `excelize.ChartAxis` exposes
+`MajorGridLines`, `MinorGridLines`, `Maximum`, `Minimum`, `LogBase`,
+`ReverseOrder`, `NumFmt`, `Font`, `TickLabelSkip`. So this extends the
+existing spec rather than introducing a new mechanism.
+
+| Item | Approach | Effort |
+|---|---|---|
+| `Chart\Axis` | Add an `axis` block to `chartSpec`; map onto `ChartAxis` fields above | M |
+| `Chart\GridLines` | Folds into the same block (`MajorGridLines`/`MinorGridLines`) | S |
+| `Chart\ChartColor` | Map to the series/axis `Font`+fill colors excelize accepts | S |
+| `Chart\Layout` | **Partial.** excelize has no manual plot-area layout; accept the object and honor only what maps (data-label position). Document the divergence rather than silently ignoring it | M |
+| `Chart\Renderer\JpGraph` | **Won't fix.** Server-side chart *image* rendering is out of scope for a native xlsx engine; charts are emitted as real Excel charts. The apps use it only for HTML/PDF preview, which wave 5.1 decouples | — |
+
+**Wave 5.5 — deliberately out of scope (document, don't build)**
+
+| Item | Rationale |
+|---|---|
+| `Writer\Xlsx\WriterPart`, `Writer\Xlsx\Worksheet` subclassing | excelize owns OOXML serialization end to end. Exposing a writer-part registry would mean re-implementing PhpSpreadsheet's XML writer inside a Go-backed engine — the two models are mutually exclusive. Consumers needing raw-part injection should keep real PhpSpreadsheet for that export (`EASY_EXCEL_ALIAS=off`) |
+| `Shared\XMLWriter` | Only exists to serve the above |
+| Subclassing `Spreadsheet` / `Worksheet` | Compat objects are handle facades over Go state; there is no PHP object graph to extend. `Spreadsheet::copySheet` and the native APIs cover the legitimate uses |
+| `Style\ConditionalFormatting\MergedCellStyle` | Reachable only from the forked HTML writers |
+
+**Cross-cutting: the two divergences that bite these apps**
+
+Neither is a missing class, and both will produce wrong-looking output long
+after the API gaps close. They belong in Phase 5 exit criteria:
+
+1. **No pre-computed formula cache** (COMPAT.md §24). Both apps pipe
+   generated xlsx into headless renderers; formula cells read blank there.
+   *Options:* (a) document and require `getCalculatedValue()` pre-pass on
+   affected columns; (b) add an opt-in save-time "evaluate and cache all
+   formulas" pass in Go — O(cells with formulas), off by default so
+   streaming exports keep their throughput. **Recommend (b) behind a flag**;
+   without it the budget variance reports are visibly broken in PDF.
+2. **Style-after-write degrade** (COMPAT.md §9). Both apps style subtotal
+   and total rows *after* writing them, which is exactly the pattern that
+   queues work and forces the serialize-and-reopen at save. No API is
+   missing — the throughput claim just does not hold for these workloads.
+   *Action:* measure it on a real report before promising a speedup, and
+   document the style-first idiom in the migration guide.
+
+**Sequencing and exit criteria**
+
+5.1 first (unblocks both apps, zero shim cost), then 5.2 (mechanical, high
+call-site coverage), then 5.3, then 5.4. 5.5 is documentation only. Each
+wave exits with: Go/PHP tests, COMPAT.md rows moved out of "Not yet
+supported", the matching MISSING.md entries deleted, and
+`compat-surface-diff.php --update-baseline` re-run so the CI gate tracks the
+new surface. The formula-cache decision (cross-cutting item 1) should be
+settled before 5.4, since chart-heavy reports depend on it.
+
+---
+
 ## 14. Open questions for approval
 
 1. **Shim namespace strategy**: ship as `composer replace phpoffice/phpspreadsheet` drop-in

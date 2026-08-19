@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace EasyExcel\Compat\Writer;
 
-use EasyExcel\Compat\Exception;
 
 /**
  * Shared base for writers, PhpSpreadsheet-compatible. Holds the include-charts,

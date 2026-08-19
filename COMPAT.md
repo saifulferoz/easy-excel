@@ -89,6 +89,17 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Charts | the PhpSpreadsheet `Chart\*` object model: `Chart`, `DataSeries` (bar/column ±stacked, line, area, pie, doughnut, scatter, radar; bar/col direction), `DataSeriesValues`, `PlotArea`, `Legend`, `Title`, X/Y axis labels; `Worksheet::addChart` | mapped onto the native chart spec; series data sources are excelize formula strings |
 | Auto-filter rules | `getAutoFilter()->getColumn($col)->createRule()->setRule($op, $value)`, AND/OR join | column rules force the model path (FilterColumn XML); excelize doesn't hide rows automatically (divergence 23) |
 
+## Supported (Phase 5.2 — consumer-driven surface)
+
+| Area | API | Notes |
+|---|---|---|
+| Exceptions | `Writer\Exception`, `Reader\Exception`, `Calculation\Exception` | narrow subclasses of the flat `Compat\Exception`, so `catch (Writer\Exception)` narrows correctly **and** existing broad catches keep working; the writers and readers now throw the narrow types |
+| Reader contract | `Reader\IReader` (+ `READ_DATA_ONLY`/`SKIP_EMPTY_CELLS`/`IGNORE_ROWS_WITH_NO_CELLS`) | implemented by `Reader\Xlsx` and `Reader\Csv`; usable as a type hint |
+| Settings | `Settings::setChartRenderer/getChartRenderer/unsetChartRenderer`, libxml + cache + HTTP-client accessors | **state-only**: values round-trip so consuming code behaves, but nothing reads them back. `setChartRenderer` is deliberately accepted rather than thrown — its callers guard an HTML/PDF preview path, and throwing would break otherwise-supported workbook generation |
+| Cell addressing | `Cell\CellAddress` (`fromCellAddress`/`fromColumnAndRow`, `columnName`/`columnId`/`rowId`, `cellAddress`/`absoluteCellAddress`, `next`/`previous` row+column), `Cell\AddressRange` (`fromCellRange`, `from`/`to`, `cellRange`/`absoluteCellRange`) | immutable value objects over `Coordinate`; ranges normalise so `from()` is always top-left (`D9:B2` → `B2:D9`); navigation clamps at row 1 / column A |
+| Drawings | `Worksheet\BaseDrawing` | extracted as the genuine shared parent of `Drawing` and `MemoryDrawing` (name, description, coordinates, offsets, size, owning sheet) rather than added alongside them; attachment stays per-subclass because each sends a different payload |
+| Shared helpers | `Shared\Drawing` (points/pixels/EMU/cm/inch/degree conversions, `cellDimensionToPixels`, `pixelsToCellDimension`), `Shared\Font` (`getDefaultRowHeightByFont`, `getCharacterWidth`, auto-size method), `Shared\File` (`sysGetTempDir`, `temporaryFilename`, upload-temp-dir toggle, `fileExists`, `realpath`) | pure PHP. `Shared\File::sysGetTempDir()` is canonicalised with `realpath()` so it matches the paths `tempnam()` actually returns (macOS reports `/var/…` but creates under `/private/var/…`) |
+
 ## Documented divergences
 
 1. **`toArray(formatData: false)` types** — values come back from excelize as
@@ -190,6 +201,17 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     image keeps its dimensions when rows/columns resize), matching
     PhpSpreadsheet. excelize's default two-cell anchoring (image stretches
     with the cells) is not used.
+26. **`Shared\Font` takes `?object`, not `Style\Font`** — Compat's
+    `Style\Font` is bound to its owning `Style` and cannot be constructed
+    standalone, while PhpSpreadsheet callers pass whatever font object they
+    hold. The `Shared\Font`/`Shared\Drawing` helpers therefore accept any
+    object exposing `getName()`/`getSize()` and fall back to Calibri 11 for
+    anything else, rather than fataling on a type mismatch.
+27. **`Shared\Font` metrics are table-driven** — PhpSpreadsheet measures
+    rendered text with GD/afm font metrics; easy-excel uses a lookup table for
+    the common families plus a linear approximation elsewhere, consistent with
+    the save-time auto-size approximation (divergence 10).
+
 
 ## Aliasing modes
 
@@ -236,17 +258,54 @@ php tools/compat-surface-diff.php --update-baseline=.compat-surface.json # bump 
 
 ## Not yet supported (throws a clear exception)
 
-- Gradient fills, diagonal/vertical/horizontal borders
-- PhpSpreadsheet's `Chart` object model (`PhpOffice\PhpSpreadsheet\Chart\*`):
-  use the native declarative API (`Worksheet::addNativeChart`) instead
-- Workbook encryption / password-protected open
-- Readers/Writers: Ods, Xls, Pdf, Slk, Gnumeric — not planned for the
-  native engine. In `strict` mode (the default with the extension) these throw
+Verified against the shipped Compat tree (`php/src/EasyExcel/Compat`), not
+against this file's history — the surface is derived by scanning that
+directory (`compatSurfaceClasses()`), so **any name without a file there
+throws `UnsupportedApiException` in `strict` mode**. Earlier revisions of this
+section listed items that shipped in waves 4.1–4.4; those are gone.
+
+Items marked **[audited]** were found by auditing two production Symfony
+report apps against this shim and are backed by real call sites — see
+MISSING.md for per-API counts and priority. The rest are known gaps with no
+observed consumer yet.
+
+### Writer extension points (the main blocker for real apps) — [audited]
+
+- `Writer\Html` **subclassing** — the Compat writer is an independent pure-PHP
+  renderer, not a port: its internals differ, so a `class X extends Html`
+  overriding protected methods (`generateSheetData`, `generateStyles`, …)
+  does not compose. The public writer API is supported; the inheritance
+  contract is not.
+- `Writer\Pdf` — no Compat class; not planned for the native engine.
+- `Writer\Xlsx\WriterPart`, `Writer\Xlsx\Worksheet` — PhpSpreadsheet's
+  writer-part registry has no counterpart: excelize owns OOXML serialization,
+  so custom parts and per-part subclassing cannot be intercepted.
+- Subclassing `Spreadsheet` / `Worksheet` to inject XML — Compat objects are
+  handle facades over Go-side state; there is no PHP object graph to extend.
+
+### Charts — [audited]
+
+- `Chart\Axis`, `Chart\GridLines`, `Chart\Layout`, `Chart\ChartColor` —
+  the object model covers `Chart`, `DataSeries`, `DataSeriesValues`,
+  `PlotArea`, `Legend`, `Title` (wave 4.4); axis configuration, gridlines and
+  manual layout are not mapped onto the native spec.
+- `Chart\Renderer\*` (incl. `JpGraph`) — no renderer concept; charts are
+  emitted natively as Excel chart parts, never rasterized in PHP.
+  (`Settings::setChartRenderer()` itself is accepted and ignored — wave 5.2.)
+
+### Worksheet methods — [audited]
+
+- `setBreak()` — manual page breaks
+- `setSelectedCells()`
+- `calculateColumnWidths()` — auto-size is approximated at save instead
+  (divergence 10)
+- `getCellCollection()` — out by design: cell data lives in Go, not in a PHP
+  collection
+
+### Formats
+
+- Readers/Writers: Ods, Xls, Pdf, Slk, Gnumeric — not planned for the native
+  engine. In `strict` mode (the default with the extension) these throw
   `UnsupportedApiException`; set `EASY_EXCEL_ALIAS=off` (or `fallback`) and
   install the real `phpoffice/phpspreadsheet` to handle them, or convert
-  externally
-- Custom value binders (`Cell::setValueBinder`), read filters with PHP
-  callbacks — planned via declarative equivalents (PHP callbacks across the
-  CGO boundary are the documented slow path)
-- `Worksheet::getRowIterator()/getColumnIterator()` (`toArray` chunked reads
-  cover most uses)
+  externally.
