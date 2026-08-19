@@ -15,7 +15,7 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | DataType | all `TYPE_*` constants | |
 | Shared\Date | `PHPToExcel`, `dateTimeToExcel`, `timestampToExcel`, `stringToExcel`, `excelToDateTimeObject`, `excelToTimestamp`, `formattedPHPToExcel`, 1900/1904 calendars | Julian-day algorithm ported verbatim, incl. the 1900 leap-year bug |
 | IOFactory | `createWriter/Reader` (Xlsx, Csv, Html), `load`, `identify` | |
-| Writer\IWriter, Writer\BaseWriter | full PhpSpreadsheet contract (`SAVE_WITH_CHARTS`/`DISABLE_PRECALCULATE_FORMULAE`, include-charts / pre-calculate / disk-caching accessors, `openFileHandle`/`processFlags`/`maybeCloseFileHandle`) | extend `BaseWriter` (or implement `IWriter`) for custom writers; the built-in writers extend it. Chart/precalc/disk-cache flags are state-only — the extension does not consume them |
+| Writer\IWriter, Writer\BaseWriter | full PhpSpreadsheet contract (`SAVE_WITH_CHARTS`/`DISABLE_PRECALCULATE_FORMULAE`, include-charts / pre-calculate / disk-caching accessors, `openFileHandle`/`processFlags`/`maybeCloseFileHandle`) | extend `BaseWriter` (or implement `IWriter`) for custom writers; the built-in writers extend it. Chart and disk-cache flags are state-only; **pre-calculate is wired through** (divergence 24) |
 | Writer\Xlsx | `save` (paths, stream-wrapper URLs — `php://`, `gaufrette://`, `s3://`, … — and open resources) | wrapper targets are staged through a local temp file (the extension only writes real paths) |
 | Writer\Csv | `set/getDelimiter`, `setEnclosure` (only `"`), `set/getLineEnding`, `set/getUseBOM`, `set/getSheetIndex`, `save` (paths, stream-wrapper URLs, open resources) | plus `setSanitizeFormulas()` (easy-excel extra, opt-in OWASP guard) |
 | Writer\Html | `save`, `generateHtmlAll`, `generateHTMLHeader`, `generateStyles`, `generateNavigation`, `generateSheetData`, `generateHTMLFooter`, `set/getSheetIndex`, `writeAllSheets`, `set/getGenerateSheetNavigationBlock`, `set/getUseInlineCss`, `set/getEmbedImages`, `set/getImagesRoot`, `set/getLineEnding`, `getOrientation`, `setEditHtmlCallback`, plus the table/conditional/boolean knobs | **pure PHP** (works with or without the extension); renders formatted cell values into sheet tables with merged-cell row/colspans. Fine-grained per-cell styling and image embedding are not rendered — a single shared stylesheet is emitted |
@@ -119,6 +119,13 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Chart | `getChartAxisX/Y`, `getPlotArea`, `getTitle`, `getLegend`, `getTopLeftPosition`, `setBottomRightPosition`, `render()` | gridlines passed to the constructor attach to the **Y** axis, matching PhpSpreadsheet regardless of which axis object was supplied. `setBottomRightPosition` derives an approximate pixel size (64px/column, 20px/row) since excelize sizes charts by width/height, not a second anchor. `render()` returns `false` — the value PhpSpreadsheet gives when no renderer is configured — so callers take their existing no-image branch |
 | DataSeries | `EMPTY_AS_GAP`/`EMPTY_AS_ZERO`/`EMPTY_AS_SPAN`/`DEFAULT_EMPTY_AS` | accepted for constructor parity; excelize has no display-blanks-as control |
 
+## Supported (Phase 5 cross-cutting — formula cache)
+
+| Area | API | Notes |
+|---|---|---|
+| Pre-calculated results | `Writer\Xlsx::setPreCalculateFormulas(bool)` (default `true`), `DISABLE_PRECALCULATE_FORMULAE` save flag | evaluates every formula at save and stores the result beside it, so readers that do not recalculate show values instead of blanks. **Numeric results only** — see divergence 24 for why text and boolean results cannot be cached correctly. Forfeits streaming, but only when the workbook contains a formula |
+| Recalculate-on-open | `Native::setFullCalcOnLoad(int $handle, bool)` (easy-excel extra, default **on**) | sets `calcPr/@fullCalcOnLoad`; costs one attribute and never degrades. Fixes spreadsheet applications; does nothing for readers that never calculate, which is what the cache above is for |
+
 ## Documented divergences
 
 1. **`toArray(formatData: false)` types** — values come back from excelize as
@@ -210,12 +217,27 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     non-matching rows; Excel re-applies the filter on open. PhpSpreadsheet
     behaves the same. Column rules also accept at most two clauses joined by
     AND/OR (the OOXML custom-filter limit).
-24. **No pre-computed formula cache** — formula cells are written with the
-    formula but without a cached `<v>` result (PhpSpreadsheet pre-calculates
-    and stores it). Excel, LibreOffice and `getCalculatedValue()` recompute
-    on open and display the correct value; headless readers that trust the
-    cache without recalculating see a blank until they evaluate. excelize has
-    no recalculate-and-store-all step, so this is inherent to the engine.
+24. **Formula cache is numeric-only** (was "no formula cache" before the
+    Phase-5 cross-cutting fix) — `Writer\Xlsx::setPreCalculateFormulas()` is
+    now wired through and defaults to `true`, matching PhpSpreadsheet: at save
+    every formula is evaluated and the result stored beside it, so readers
+    that trust the cached `<v>` (PDF/HTML pipelines, most headless parsers)
+    show values rather than blanks.
+    **Only numeric results are cached.** excelize offers no way to store a
+    text or boolean formula result correctly — `SetCellStr`/`SetCellValue`
+    write a shared-string *index* into `<v>`, and the formula write then
+    relabels the cell `t="str"` while leaving that index in place, so the cell
+    reads back as `0`/`1` instead of its text. Caching a wrong value is worse
+    than caching none, so text, boolean and error results are left to
+    recompute on open, exactly as before.
+    Pre-calculation costs a full formula pass and forces random-access mode,
+    so it forfeits streaming — but only for workbooks that actually contain a
+    formula; a pure-data export streams with the flag left on. Turn it off
+    with `setPreCalculateFormulas(false)` or the
+    `DISABLE_PRECALCULATE_FORMULAE` save flag.
+    Independently, the workbook's `calcPr/@fullCalcOnLoad` flag is set by
+    default (free, one attribute): spreadsheet **applications** recalculate on
+    open regardless. Disable via `Native::setFullCalcOnLoad($handle, false)`.
 25. **Image anchoring** — drawings use one-cell anchoring (fixed size, the
     image keeps its dimensions when rows/columns resize), matching
     PhpSpreadsheet. excelize's default two-cell anchoring (image stretches

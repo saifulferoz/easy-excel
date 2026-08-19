@@ -85,6 +85,25 @@ type Workbook struct {
 	degraded    bool
 	needsReopen bool // streams were flushed by a save; model edits need a reopen
 	closed      bool
+
+	// Formula cache controls (formulacache.go). fullCalcOnLoad is free and
+	// defaults on; precalculate forfeits streaming, so it is opt-in and only
+	// acts when the workbook actually contains a formula.
+	fullCalcOnLoad bool
+	precalculate   bool
+	sawFormula     bool
+	openedFromFile bool
+}
+
+// anyFormulaWritten reports whether the workbook might contain a formula.
+//
+// True when one was written this session, and true for a workbook opened from
+// a file — its existing formulas have not been enumerated, and a caller who
+// asked for pre-calculation on a loaded file means the ones already in it.
+// A freshly created, pure-data export answers false, so leaving the flag on
+// costs such an export nothing.
+func (w *Workbook) anyFormulaWritten() bool {
+	return w.sawFormula || w.openedFromFile
 }
 
 // Env wires the process-wide gate and path policy into workbooks.
@@ -126,6 +145,8 @@ func New(env *Env) (*Workbook, error) {
 		gate:     env.gate(),
 		policy:   env.policy(),
 		estBytes: baseEstimate,
+		// Free, and fixes every spreadsheet application; see formulacache.go.
+		fullCalcOnLoad: true,
 	}
 	return w, nil
 }
@@ -167,6 +188,9 @@ func Open(path, password string, env *Env) (*Workbook, error) {
 		policy:   env.policy(),
 		estBytes: est,
 		degraded: true, // random-access from the start
+		// Free, and fixes every spreadsheet application; see formulacache.go.
+		fullCalcOnLoad: true,
+		openedFromFile: true,
 	}
 	for _, name := range f.GetSheetList() {
 		st := &sheetState{}
@@ -427,6 +451,7 @@ func (w *Workbook) streamRows(sheet string, st *sheetState, startRow, startCol i
 				}
 			case compat.Formula:
 				values[j] = excelize.Cell{StyleID: styleID, Formula: c.Str}
+				w.sawFormula = true
 			}
 		}
 		anchor, err := excelize.CoordinatesToCellName(startCol, rowNum)
@@ -505,6 +530,7 @@ func (w *Workbook) setCellLocked(sheet, axis string, c compat.Cell) error {
 	case compat.Boolean:
 		return w.f.SetCellBool(sheet, axis, c.Bool)
 	case compat.Formula:
+		w.sawFormula = true
 		return w.f.SetCellFormula(sheet, axis, c.Str)
 	}
 	return nil
@@ -1017,12 +1043,25 @@ func (w *Workbook) settleForSave(allowPatch bool) error {
 			}
 		}
 	}
-	if w.hasAnyPendingWork() {
+	// Pre-calculation reads every formula back, which random-access mode is a
+	// precondition for — but only pay that price if the workbook actually has
+	// a formula. A pure-data export keeps streaming with the flag left on.
+	precalcNeeded := w.precalculate && w.anyFormulaWritten()
+	if precalcNeeded || w.hasAnyPendingWork() {
 		if err := w.ensureRandomAll(); err != nil {
 			return err
 		}
 	}
-	return w.flushStreams()
+	if err := w.flushStreams(); err != nil {
+		return err
+	}
+	if precalcNeeded {
+		// After the flush: the formulas must be in the model to be evaluated.
+		if _, err := w.cacheFormulaResults(); err != nil {
+			return err
+		}
+	}
+	return w.applyCalcProps()
 }
 
 func (w *Workbook) filterPatches() []filterPatch {

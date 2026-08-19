@@ -55,13 +55,13 @@ Not missing APIs — these produce wrong-looking output even once every class
 exists, so they outrank the open gaps above for anyone migrating a
 report-heavy app:
 
-- **Pre-computed formula cache** — formula cells are written without a cached
-  `<v>` result, so readers that don't recalculate on open show them blank.
-  Excel, LibreOffice and `getCalculatedValue()` are fine. This is the one that
-  bites hardest: both audited apps pipe generated xlsx into PDF/HTML
-  rendering, and the budget variance reports are formula-heavy (COMPAT.md §24).
-  **Still open** — an opt-in save-time evaluate-and-cache pass is the proposed
-  fix (PLAN.md §13, Phase 5 cross-cutting item 1)
+- **Formula cache is numeric-only** — *largely fixed*. Pre-calculation is now
+  wired to `Writer\Xlsx::setPreCalculateFormulas()` and defaults on, matching
+  PhpSpreadsheet, and `calcPr/@fullCalcOnLoad` is set by default. What remains:
+  excelize cannot store a **text or boolean** formula result correctly (it
+  writes a shared-string index into `<v>`), so those still recompute on open.
+  Numeric results — the overwhelming majority in the audited reports — are
+  cached (COMPAT.md §24)
 - **Style-after-write degrade** — styling rows *after* writing them queues the
   work and triggers the one-time serialize-and-reopen at save, forfeiting the
   streaming win. Both audited apps do this for subtotal/total rows. No API is

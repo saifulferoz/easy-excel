@@ -322,6 +322,20 @@ function easy_excel_freeze_panes(int $handle, string $sheet, string $topLeftCell
     return null;
 }
 
+function easy_excel_set_precalculate_formulas(int $handle, bool $on): ?string
+{
+    EasyExcelFake::$log[] = ['set_precalculate_formulas', [$handle, $on]];
+
+    return null;
+}
+
+function easy_excel_set_full_calc_on_load(int $handle, bool $on): ?string
+{
+    EasyExcelFake::$log[] = ['set_full_calc_on_load', [$handle, $on]];
+
+    return null;
+}
+
 function easy_excel_set_break(int $handle, string $sheet, string $cell, int $breakType): ?string
 {
     EasyExcelFake::$log[] = ['set_break', [$handle, $sheet, $cell, $breakType]];

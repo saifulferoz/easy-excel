@@ -600,22 +600,30 @@ existing spec rather than introducing a new mechanism.
 audited apps resolve under Compat. The four that do not are the by-design
 exclusions, each documented in COMPAT.md with the alternative.
 
-**What did not get done:** cross-cutting item 1 below (the formula cache) is
-still open, and is now the highest-value remaining item for either app —
-their PDF output is visibly wrong without it, regardless of API coverage.
+**Cross-cutting item 1 (the formula cache) landed after 5.5**, closing the
+last thing that made either app's PDF output visibly wrong. Item 2
+(style-after-write) is a usage pattern, not a defect, and stays documented.
 
 **Cross-cutting: the two divergences that bite these apps**
 
 Neither is a missing class, and both will produce wrong-looking output long
 after the API gaps close. They belong in Phase 5 exit criteria:
 
-1. **No pre-computed formula cache** (COMPAT.md §24). Both apps pipe
-   generated xlsx into headless renderers; formula cells read blank there.
-   *Options:* (a) document and require `getCalculatedValue()` pre-pass on
-   affected columns; (b) add an opt-in save-time "evaluate and cache all
-   formulas" pass in Go — O(cells with formulas), off by default so
-   streaming exports keep their throughput. **Recommend (b) behind a flag**;
-   without it the budget variance reports are visibly broken in PDF.
+1. **Formula cache — DONE (2026-08-19).** Implemented as two independent
+   mitigations rather than the single pass originally proposed, because they
+   fix different readers at very different cost. `calcPr/@fullCalcOnLoad` is
+   set by default: free, never degrades, and makes every *spreadsheet
+   application* recalculate on open. The evaluate-and-cache pass is wired to
+   PhpSpreadsheet's own `setPreCalculateFormulas()` (default on, as upstream)
+   and is what non-calculating readers need; it degrades, but only when the
+   workbook actually contains a formula.
+   **Scope limit found during implementation:** only numeric results can be
+   cached. excelize's `SetCellStr`/`SetCellValue(string)` write a
+   shared-string *index* into `<v>`, and the following formula write relabels
+   the cell `t="str"` while leaving the index — so a cached text result reads
+   back as `0`. Caching a wrong value is worse than caching none, so text,
+   boolean and error results still recompute on open. Verified by probing
+   excelize directly before committing to the design.
 2. **Style-after-write degrade** (COMPAT.md §9). Both apps style subtotal
    and total rows *after* writing them, which is exactly the pattern that
    queues work and forces the serialize-and-reopen at save. No API is
