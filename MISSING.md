@@ -20,6 +20,16 @@ GD `MemoryDrawing`, the PhpSpreadsheet `Chart\*` object model
 later audit of two production report apps found further gaps, listed below;
 they are a mix of by-design exclusions and unclaimed surface.
 
+Closed by wave 5.4 (2026-08-19): the chart axis model — `Chart\Axis`,
+`Chart\GridLines`, `Chart\Layout`, `Chart\ChartColor`, plus the `Chart`
+constructor's axis/gridline parameters, `getPlotArea()`, `getChartAxisX/Y()`,
+`setBottomRightPosition()`, `render()` and the `DataSeries::EMPTY_AS_*`
+constants. Mapped onto `excelize.ChartAxis` through a new `axis` block in the
+native chart spec. 11 Go tests (incl. an end-to-end assertion on the generated
+chart XML) and 25 shim tests — 243 passing. **49 of 53 PhpOffice imports
+across both audited apps now resolve under Compat**; the four holdouts are the
+wave-5.5 by-design exclusions.
+
 Closed by wave 5.3 (2026-08-19): `setBreak()` (+`ByColumnAndRow` and the
 `BREAK_*` constants) via `excelize.InsertPageBreak`/`RemovePageBreak`;
 `setSelectedCells()` (+aliases), merged into the sheet's pane record so it
@@ -87,13 +97,9 @@ request.
   handle facades over Go state, not an extensible PHP object graph
 
 **Charts**
-- `Chart\Layout` (15), `Chart\Axis` (9), `Chart\GridLines` (6),
-  `Chart\ChartColor` (1) — wave 4.4 mapped `Chart`, `DataSeries`,
-  `DataSeriesValues`, `PlotArea`, `Legend` and `Title`; axis config, gridlines
-  and manual layout are not
-- `Chart\Renderer\JpGraph` — no renderer concept; charts are emitted as
-  native Excel chart parts, never rasterized in PHP. (`Settings` itself landed
-  in wave 5.2: `setChartRenderer()` is accepted and ignored)
+- `Chart\Renderer\*` (incl. `JpGraph`) — no renderer concept; charts are
+  emitted as native Excel chart parts, never rasterized in PHP. `Chart::render()`
+  returns false so callers take their no-image branch
 
 **Worksheet methods**
 - `getCellCollection()` (2) — out by design: cell data lives in Go, not in a

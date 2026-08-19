@@ -108,6 +108,17 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Selection | `Worksheet::setSelectedCells(+setSelectedCell/ByColumnAndRow)` | excelize carries selection inside the **pane** record, not `ViewOptions`, so the existing pane state is read back and merged — selecting a cell after `freezePane()` keeps the freeze instead of silently undoing it |
 | Auto-size | `Worksheet::calculateColumnWidths()` | accepted no-op returning `$this`: auto-size is approximated in Go at save (divergence 10), so there is nothing to precompute. Callers need not branch on the engine |
 
+## Supported (Phase 5.4 — chart axis model)
+
+| Area | API | Notes |
+|---|---|---|
+| Axis | `Chart\Axis`: `setAxisOptionsProperties` (full positional signature), `setAxisNumberProperties`, `setFillParameters`, `set/getMajor+MinorGridlines`, `getAxisOptionsProperty`, `AXIS_LABELS_*`/`TICK_MARK_*`/`AXIS_ORIENTATION_*` constants | mapped onto `excelize.ChartAxis`: label suppression (`none` → `None`), `minimum`/`maximum`, `majorUnit`, `logBase`, `maxMin` → `ReverseOrder`, number format, label font colour. Bounds use pointers end-to-end so an explicit `0` is distinct from unset |
+| GridLines | `Chart\GridLines`, attached via the `Chart` constructor or `Axis::setMajorGridlines` | presence turns the gridlines on (`MajorGridLines`/`MinorGridLines`). Line colour/style, glow, shadow and soft-edge setters are accepted and round-trip, but excelize models no gridline line format |
+| Layout | `Chart\Layout`: `setShowVal` and the sibling data-label toggles, plot-area geometry accessors | `setShowVal` drives `PlotArea.ShowVal`; geometry is stored and round-trips but is not rendered |
+| ChartColor | `Chart\ChartColor`: `setColorProperties`, `EXCEL_COLOR_TYPE_*` | normalises `#rrggbb`/`rrggbb` to bare upper-case hex for excelize |
+| Chart | `getChartAxisX/Y`, `getPlotArea`, `getTitle`, `getLegend`, `getTopLeftPosition`, `setBottomRightPosition`, `render()` | gridlines passed to the constructor attach to the **Y** axis, matching PhpSpreadsheet regardless of which axis object was supplied. `setBottomRightPosition` derives an approximate pixel size (64px/column, 20px/row) since excelize sizes charts by width/height, not a second anchor. `render()` returns `false` — the value PhpSpreadsheet gives when no renderer is configured — so callers take their existing no-image branch |
+| DataSeries | `EMPTY_AS_GAP`/`EMPTY_AS_ZERO`/`EMPTY_AS_SPAN`/`DEFAULT_EMPTY_AS` | accepted for constructor parity; excelize has no display-blanks-as control |
+
 ## Documented divergences
 
 1. **`toArray(formatData: false)` types** — values come back from excelize as
@@ -229,6 +240,17 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     selection in, so freeze and selection compose. Setting a selection on a
     sheet with no panes writes a pane-less selection, as Excel does.
 
+30. **Chart axis coverage is what excelize models** — tick-mark style,
+    crossing point, axis orientation beyond min/max reversal, time units and
+    display units are accepted and ignored: excelize has no field for them, so
+    throwing would break charts that are otherwise correct. Manual plot-area
+    geometry (`Layout` x/y/w/h) and gridline line formatting are stored and
+    round-trip through the getters but do not affect the rendered chart.
+31. **Chart size comes from anchors, approximately** — PhpSpreadsheet anchors a
+    chart between two cells; excelize sizes it in pixels. The span is converted
+    with the OOXML default grid (64px per column, 20px per row), so the chart
+    lands in the right place at close to the right size, not byte-identically.
+
 
 ## Aliasing modes
 
@@ -312,13 +334,10 @@ observed consumer yet.
 
 ### Charts — [audited]
 
-- `Chart\Axis`, `Chart\GridLines`, `Chart\Layout`, `Chart\ChartColor` —
-  the object model covers `Chart`, `DataSeries`, `DataSeriesValues`,
-  `PlotArea`, `Legend`, `Title` (wave 4.4); axis configuration, gridlines and
-  manual layout are not mapped onto the native spec.
 - `Chart\Renderer\*` (incl. `JpGraph`) — no renderer concept; charts are
   emitted natively as Excel chart parts, never rasterized in PHP.
-  (`Settings::setChartRenderer()` itself is accepted and ignored — wave 5.2.)
+  (`Settings::setChartRenderer()` is accepted and ignored — wave 5.2;
+  `Chart::render()` returns false — wave 5.4.)
 
 ### Formats
 
