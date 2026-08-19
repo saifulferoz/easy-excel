@@ -513,7 +513,7 @@ track there), PHP callbacks inside per-cell hot paths.
 
 ---
 
-### Phase 5 — consumer-driven gap closure (planned)
+### Phase 5 — consumer-driven gap closure (complete, 2026-08-19)
 
 Scoped from an audit of two production Symfony report apps (erp-add-ons,
 budget-service; 100 PhpSpreadsheet-using files) against the shipped Compat
@@ -584,7 +584,25 @@ existing spec rather than introducing a new mechanism.
 | `Writer\Xlsx\WriterPart`, `Writer\Xlsx\Worksheet` subclassing | excelize owns OOXML serialization end to end. Exposing a writer-part registry would mean re-implementing PhpSpreadsheet's XML writer inside a Go-backed engine — the two models are mutually exclusive. Consumers needing raw-part injection should keep real PhpSpreadsheet for that export (`EASY_EXCEL_ALIAS=off`) |
 | `Shared\XMLWriter` | Only exists to serve the above |
 | Subclassing `Spreadsheet` / `Worksheet` | Compat objects are handle facades over Go state; there is no PHP object graph to extend. `Spreadsheet::copySheet` and the native APIs cover the legitimate uses |
-| `Style\ConditionalFormatting\MergedCellStyle` | Reachable only from the forked HTML writers |
+| `Style\ConditionalFormatting\MergedCellStyle` | ~~Reachable only from the forked HTML writers~~ — **wrong, corrected in 5.5**: erp-add-ons still constructs one directly after the 5.1 re-parenting. It stays out because it needs `StyleMerger`, `CellStyleAssessor`, `CellMatcher` and the whole `Worksheet\Table` subsystem — a subsystem, not an unreachable leaf |
+
+**Outcome (all waves landed 2026-08-19)**
+
+| Wave | Result |
+|---|---|
+| 5.1 | Both `HTMLWriter`s re-parented to `BaseWriter` — consumer-side, zero shim cost, as predicted. Two things the plan missed: budget-service had never declared `save()` (inherited from `Html`, so the class went abstract) and carried 21 `#[\Override]` attributes that became fatal. Shim side gained `Shared\StringHelper`, a gap the audit had entirely missed |
+| 5.2 | 11 classes, all mechanical as estimated. `Shared\Font` had to take `?object` rather than `Style\Font`, which is bound to its owning `Style` and cannot be constructed standalone |
+| 5.3 | `setBreak`/`setSelectedCells`/`calculateColumnWidths`. Selection was not trivial: excelize carries it in the **pane** record, and queued panes are flushed and cleared before pending ops run, so the pane state has to be read back from the file or the freeze is silently lost |
+| 5.4 | Chart axis model. Estimated M for `Chart\Axis`; the real work was matching PhpSpreadsheet's own semantics (gridlines attach to the Y axis regardless of which axis was passed; `render()` returns `false`, not an exception) and finding `DataSeries::EMPTY_AS_*`, which every budget-service chart passes |
+| 5.5 | Documentation. One rationale in this plan was wrong and is corrected above |
+
+**Where it landed:** 49 of the 53 `PhpOffice\*` names imported across both
+audited apps resolve under Compat. The four that do not are the by-design
+exclusions, each documented in COMPAT.md with the alternative.
+
+**What did not get done:** cross-cutting item 1 below (the formula cache) is
+still open, and is now the highest-value remaining item for either app —
+their PDF output is visibly wrong without it, regardless of API coverage.
 
 **Cross-cutting: the two divergences that bite these apps**
 

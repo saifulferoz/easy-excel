@@ -295,54 +295,94 @@ php tools/compat-surface-diff.php --baseline=.compat-surface.json        # gate 
 php tools/compat-surface-diff.php --update-baseline=.compat-surface.json # bump deliberately
 ```
 
-## Not yet supported (throws a clear exception)
+## Not supported — by design (wave 5.5)
 
-Verified against the shipped Compat tree (`php/src/EasyExcel/Compat`), not
-against this file's history — the surface is derived by scanning that
-directory (`compatSurfaceClasses()`), so **any name without a file there
-throws `UnsupportedApiException` in `strict` mode**. Earlier revisions of this
-section listed items that shipped in waves 4.1–4.4; those are gone.
+Verified against the shipped Compat tree (`php/src/EasyExcel/Compat`): the
+alias surface is derived by scanning that directory (`compatSurfaceClasses()`),
+so **any name without a file there throws `UnsupportedApiException` in
+`strict` mode**.
 
-Items marked **[audited]** were found by auditing two production Symfony
-report apps against this shim and are backed by real call sites — see
-MISSING.md for per-API counts and priority. The rest are known gaps with no
-observed consumer yet.
+Everything below is a deliberate exclusion, not a backlog item. Each entry
+says why the gap is structural and what to do instead. Waves 5.1–5.4 closed
+the rest: **49 of the 53 `PhpOffice\*` names imported across the two audited
+production apps now resolve under Compat**, and the four that do not are
+listed here.
 
-### Writer extension points (the main blocker for real apps) — [audited]
+### The escape hatch
 
-> **Wave 5.1 resolved this for the audited apps by removing the dependency
-> rather than adding it.** Both `HTMLWriter extends Html` subclasses were
-> standalone renderers that inherited nothing from `Html` beyond the
-> constructor (verified by tokenizing every `$this->` use: the only inherited
-> members were `processFlags`, `openFileHandle`, `maybeCloseFileHandle`,
-> `$fileHandle`, `$includeCharts`, `$preCalculateFormulas` — all from
-> `BaseWriter`). Re-parenting them to `BaseWriter` is a consumer-side change
-> that costs the shim nothing. The entry below still stands for anyone
-> genuinely overriding `Html`'s internals.
+None of these force an all-or-nothing choice. `EASY_EXCEL_ALIAS=fallback`
+aliases every class Compat implements and defers the rest to a real
+`phpoffice/phpspreadsheet` install, per class — so an app can generate its
+bulk exports through the native engine and keep upstream for one report that
+needs raw OOXML. `EASY_EXCEL_ALIAS=off` returns the whole request to upstream.
+The trade-off is documented under "Aliasing modes": `fallback` can mix object
+models within a single request, so keep the boundary at the export level.
 
-- `Writer\Html` **subclassing** — the Compat writer is an independent pure-PHP
-  renderer, not a port: its internals differ, so a `class X extends Html`
-  overriding protected methods (`generateSheetData`, `generateStyles`, …)
-  does not compose. The public writer API is supported; the inheritance
-  contract is not.
-- `Writer\Pdf` — no Compat class; not planned for the native engine.
-- `Writer\Xlsx\WriterPart`, `Writer\Xlsx\Worksheet` — PhpSpreadsheet's
-  writer-part registry has no counterpart: excelize owns OOXML serialization,
-  so custom parts and per-part subclassing cannot be intercepted.
-- Subclassing `Spreadsheet` / `Worksheet` to inject XML — Compat objects are
-  handle facades over Go-side state; there is no PHP object graph to extend.
+### 1. Custom OOXML writer parts
 
-### Charts — [audited]
+`Writer\Xlsx\WriterPart`, `Writer\Xlsx\Worksheet`, `Shared\XMLWriter`
 
-- `Chart\Renderer\*` (incl. `JpGraph`) — no renderer concept; charts are
-  emitted natively as Excel chart parts, never rasterized in PHP.
-  (`Settings::setChartRenderer()` is accepted and ignored — wave 5.2;
-  `Chart::render()` returns false — wave 5.4.)
+PhpSpreadsheet builds xlsx by composing PHP writer-part classes, each
+serialising a fragment of the package; subclassing one lets an app inject
+arbitrary XML. excelize owns serialisation end to end — there is no part
+registry to hook, and no point in the pipeline where a PHP-authored fragment
+could be spliced in without re-implementing the writer in PHP, which is the
+thing the native engine exists to avoid. The two models are mutually
+exclusive.
+
+`Shared\XMLWriter` exists only to serve this pattern; nothing else in the
+audited apps uses it.
+
+**Instead:** keep the affected export on upstream via `fallback`. Anything
+expressible through the supported API (styles, charts, validations,
+conditional formats) needs no custom part.
+
+### 2. Subclassing `Spreadsheet` / `Worksheet`
+
+Compat's workbook and worksheet objects are thin facades over a handle into
+Go-side state — there is no PHP object graph holding cells, so a subclass has
+nothing to extend or intercept. Overriding a method changes what PHP asks the
+extension to do; it cannot change what the extension writes.
+
+**Instead:** `Spreadsheet::copySheet()` covers sheet duplication (the common
+reason to subclass), and the native chart/image APIs cover injection that
+would otherwise be done by overriding a writer.
+
+### 3. Chart image rendering
+
+`Chart\Renderer\*` (incl. `JpGraph`)
+
+easy-excel emits charts as real Excel chart parts, which Excel and LibreOffice
+render themselves. Rasterising a chart to PNG in PHP is a different job,
+needing a plotting library and a font stack the engine deliberately does not
+carry.
+
+**Instead:** `Settings::setChartRenderer()` is accepted and ignored (wave 5.2)
+and `Chart::render()` returns `false` (wave 5.4) — the value PhpSpreadsheet
+itself returns when no renderer is configured, so callers take their existing
+"no image available" branch rather than fataling. Charts in the generated
+xlsx are unaffected and fully rendered.
+
+### 4. `Style\ConditionalFormatting\MergedCellStyle`
+
+Resolves the effective style of one cell by folding in matching conditional
+rules and table styles. It is not a leaf class: it needs `StyleMerger`,
+`CellStyleAssessor`, `CellMatcher`, and — through
+`Worksheet::getTablesWithStylesForCell()` — the whole `Worksheet\Table`
+subsystem with its dxf style model, none of which Compat implements.
+
+Earlier revisions of this file dismissed it as "reachable only from the forked
+HTML writers". That was wrong: erp-add-ons still constructs one directly after
+the wave-5.1 re-parenting. It stays out because it is a subsystem, not because
+it is unreachable.
+
+**Instead:** `getStyle()` returns the cell's base style, and
+`getConditionalStyles()` returns the rules on a range — enough to resolve
+matches manually where an app needs the merged result.
 
 ### Formats
 
-- Readers/Writers: Ods, Xls, Pdf, Slk, Gnumeric — not planned for the native
-  engine. In `strict` mode (the default with the extension) these throw
-  `UnsupportedApiException`; set `EASY_EXCEL_ALIAS=off` (or `fallback`) and
-  install the real `phpoffice/phpspreadsheet` to handle them, or convert
-  externally.
+Readers/Writers: Ods, Xls, Pdf, Slk, Gnumeric — not planned for the native
+engine. In `strict` mode these throw `UnsupportedApiException`; use
+`fallback`/`off` with a real `phpoffice/phpspreadsheet` install, or convert
+externally.

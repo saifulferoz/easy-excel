@@ -1,112 +1,45 @@
 # Not implemented
 
-PhpSpreadsheet APIs the polyfill does **not** provide. Found by running real
-PhpSpreadsheet code against it (`data/public/index.php` is one such probe);
-COMPAT.md documents what *is* supported and where supported behavior
-intentionally diverges. Calling anything below fails loudly (class not
-found / clear exception) — never with a silently different file.
+PhpSpreadsheet APIs the polyfill does **not** provide. COMPAT.md documents
+what *is* supported and where supported behaviour intentionally diverges.
+Calling anything below fails loudly (class not found / clear exception) —
+never with a silently different file.
 
-**An implementation plan for closing these gaps exists**: PLAN.md §13
-"Phase 4 — compat completion" orders everything below into four ROI waves
-with verified excelize APIs and effort estimates. Items land there and get
-deleted here.
+**Phase 5 is complete.** Waves 5.1–5.5 (PLAN.md §13) closed the gaps found by
+auditing two production Symfony report apps against the shim: **49 of the 53
+`PhpOffice\*` names those apps import now resolve under Compat**. What remains
+is deliberate — see "By design" below and the matching section in COMPAT.md,
+which carries the full rationale for each.
 
-## Found by the ERP report probe (`data/public/index.php`)
+## By design (will not be implemented)
 
-Closed by wave 4.4 (2026-06-13): rich-text cell values with per-run fonts,
-GD `MemoryDrawing`, the PhpSpreadsheet `Chart\*` object model
-(`Worksheet::addChart`), and auto-filter column rules
-(`getAutoFilter()->getColumn()`). This completes Phase 4 as planned — but a
-later audit of two production report apps found further gaps, listed below;
-they are a mix of by-design exclusions and unclaimed surface.
+These are structural mismatches with a Go/excelize engine, not backlog items.
+`EASY_EXCEL_ALIAS=fallback` defers any of them to a real
+`phpoffice/phpspreadsheet` install per class, so an app can keep its bulk
+exports native and route one report to upstream.
 
-Closed by wave 5.4 (2026-08-19): the chart axis model — `Chart\Axis`,
-`Chart\GridLines`, `Chart\Layout`, `Chart\ChartColor`, plus the `Chart`
-constructor's axis/gridline parameters, `getPlotArea()`, `getChartAxisX/Y()`,
-`setBottomRightPosition()`, `render()` and the `DataSeries::EMPTY_AS_*`
-constants. Mapped onto `excelize.ChartAxis` through a new `axis` block in the
-native chart spec. 11 Go tests (incl. an end-to-end assertion on the generated
-chart XML) and 25 shim tests — 243 passing. **49 of 53 PhpOffice imports
-across both audited apps now resolve under Compat**; the four holdouts are the
-wave-5.5 by-design exclusions.
+- **Custom OOXML writer parts** — `Writer\Xlsx\WriterPart`,
+  `Writer\Xlsx\Worksheet`, `Shared\XMLWriter`. excelize owns serialisation
+  end to end; there is no part registry to hook (COMPAT.md §1)
+- **Subclassing `Spreadsheet` / `Worksheet`** — Compat objects are handle
+  facades over Go state, with no PHP object graph to extend (COMPAT.md §2)
+- **Chart image rendering** — `Chart\Renderer\*` (incl. `JpGraph`). Charts
+  are emitted as native Excel chart parts; `Chart::render()` returns false so
+  callers take their no-image branch (COMPAT.md §3)
+- **`Style\ConditionalFormatting\MergedCellStyle`** — needs `StyleMerger`,
+  `CellStyleAssessor`, `CellMatcher` and the whole `Worksheet\Table` subsystem
+  (COMPAT.md §4)
+- **`Writer\Html` subclassing** — the Compat writer is an independent pure-PHP
+  renderer, not a port, so overriding its protected internals does not
+  compose. The public writer API is supported; wave 5.1 showed the audited
+  apps never needed the inheritance at all
+- **`Writer\Pdf`**, and readers/writers for Ods, Xls, Slk, Gnumeric
+- **`getCellCollection()`** — cell data lives in Go, not in a PHP collection
 
-Closed by wave 5.3 (2026-08-19): `setBreak()` (+`ByColumnAndRow` and the
-`BREAK_*` constants) via `excelize.InsertPageBreak`/`RemovePageBreak`;
-`setSelectedCells()` (+aliases), merged into the sheet's pane record so it
-composes with `freezePane()` rather than clobbering it; and
-`calculateColumnWidths()` as an accepted no-op. 2 new bridge exports (60
-total), 10 Go tests, 18 shim tests — 217 passing.
+## Open gaps (no observed consumer yet)
 
-Closed by wave 5.1 (2026-08-19): `Shared\StringHelper` (found by checking
-every `PhpOffice\*` import in the four consumer writer files against Compat —
-33 of 34 now resolve). Wave 5.1's main work was consumer-side: re-parenting
-both apps' `HTMLWriter` from `Writer\Html` to `Writer\BaseWriter`, which the
-tokenizer confirmed inherited nothing but the constructor. `Style\Conditional
-Formatting\MergedCellStyle` remains the one unresolved writer import — it
-needs `StyleMerger` plus table-style resolution, so it is a subsystem, not a
-quick win.
+Not exercised by either audited app, so unprioritised rather than refused:
 
-Closed by wave 5.2 (2026-08-19): `Writer\Exception`, `Reader\Exception` and
-`Calculation\Exception` (narrow types that still satisfy broad catches, and
-the writers/readers now throw them); `Reader\IReader` (both readers
-implement it); `Settings` (`setChartRenderer` accepted and ignored);
-`Cell\CellAddress` + `Cell\AddressRange`; `Worksheet\BaseDrawing` (extracted
-as the real parent of `Drawing`/`MemoryDrawing`); and `Shared\File`,
-`Shared\Font`, `Shared\Drawing`. 54 new tests, 180 passing overall.
-
-Closed by wave 4.3 (2026-06-13): insert/remove rows and columns,
-`createSheet($index)`, sheet copy (`Spreadsheet::copySheet` extra), sheet
-views (gridlines/zoom/RTL/tab color), headers/footers, page margins — plus
-a correctness fix: post-save mutations were silently dropped by excelize
-on stream-flushed sheets; they now reopen first (COMPAT.md §21).
-
-Closed by wave 4.2 (2026-06-13): `getDefaultStyle()`, row/column iterators,
-`IReadFilter`, style read-back from loaded files + `duplicateStyle`,
-validation/conditional/defined-name/auto-filter getters.
-
-Closed by wave 4.1 (2026-06-13): custom value binders, document properties
-(`getProperties()`; `setManager` is kept PHP-side only — excelize has no
-field for it), print titles + print area, the `getConditionalStyles()`
-getter, workbook encryption (writer/reader `setPassword()`, easy-excel
-extras), gradient fills, diagonal borders, `unmergeCells` + merge getter,
-and calculation-cache no-ops.
-
-## Known gaps (by area)
-
-Scoped deliberately: this list covers **only APIs actually called by two
-production Symfony report apps** audited against the shipped Compat tree
-(100 PhpSpreadsheet-using files between them). It is not an exhaustive diff
-of PhpSpreadsheet — for that, run `php/tools/compat-surface-diff.php`. Counts
-in parentheses are call sites found in each app, so the list doubles as a
-priority order.
-
-The alias surface is derived by scanning `php/src/EasyExcel/Compat`, so **a
-name without a file there throws `UnsupportedApiException` in `strict`
-mode** — and strict is all-or-nothing, so one uncovered class fails the whole
-request.
-
-**Writer extension points** (the largest real-world blocker — both apps)
-- `Writer\Html` **subclassing** — both apps do `class HTMLWriter extends Html`
-  (~1800 and ~1400 lines) overriding protected methods. The public writer API
-  is supported, but the Compat writer is an independent pure-PHP renderer,
-  not a port, so the inheritance contract does not compose
-- `Writer\Pdf` — both apps subclass their `HTMLWriter` to produce PDFs
-- `Writer\Xlsx\WriterPart` / `Writer\Xlsx\Worksheet` — excelize owns OOXML
-  serialization; custom writer parts cannot be intercepted
-- Subclassing `Spreadsheet` / `Worksheet` to inject XML — Compat objects are
-  handle facades over Go state, not an extensible PHP object graph
-
-**Charts**
-- `Chart\Renderer\*` (incl. `JpGraph`) — no renderer concept; charts are
-  emitted as native Excel chart parts, never rasterized in PHP. `Chart::render()`
-  returns false so callers take their no-image branch
-
-**Worksheet methods**
-- `getCellCollection()` (2) — out by design: cell data lives in Go, not in a
-  PHP collection. Both call sites are inside the HTML writers that wave 5.1
-  decoupled
-
-**Not exercised by either app** (still gaps, lower priority)
 - Auto-filter **column rule** introspection (range getter landed in 4.2)
 - `removeConditionalStyles`
 - `clone $sheet` / `Spreadsheet::addExternalSheet` (use
@@ -114,25 +47,49 @@ request.
 - Vertical/horizontal borders (conditional-formatting-only border sides)
 - Header/footer images, cell background images (file & memory drawings
   anchored to cells are supported)
-- Readers/writers: Ods, Xls, Slk, Gnumeric — install the real
-  `phpoffice/phpspreadsheet` alongside (the alias bootstrap stays dormant
-  and defers to it) or convert externally
 - 63 of PhpSpreadsheet's 529 calculation functions (list in FORMULAS.md)
 
-**Behavioral divergences that bite these two apps**
-- **Pre-computed formula cache** — formula cells are written without a
-  cached `<v>` result, so spreadsheet apps that don't auto-recalculate on
-  open (some headless readers) show them blank until recalculated. Both apps
-  feed generated xlsx into PDF/HTML rendering, and the budget variance
-  reports are formula-heavy (COMPAT.md §24)
-- **Style-after-write degrade** — both apps style subtotal/total rows *after*
-  writing them, which queues the work and triggers the one-time
-  serialize-and-reopen at save, forfeiting the streaming win on the largest
-  reports (COMPAT.md §9)
-- Auto-filter does not hide non-matching rows (column rules are recorded;
-  Excel re-applies on open — COMPAT.md §23)
-- `Calculation` array-formula toggles (the cache controls are accepted
-  no-ops since wave 4.1) — calculation is delegated to excelize
+## Behavioural divergences worth planning around
+
+Not missing APIs — these produce wrong-looking output even once every class
+exists, so they outrank the open gaps above for anyone migrating a
+report-heavy app:
+
+- **Pre-computed formula cache** — formula cells are written without a cached
+  `<v>` result, so readers that don't recalculate on open show them blank.
+  Excel, LibreOffice and `getCalculatedValue()` are fine. This is the one that
+  bites hardest: both audited apps pipe generated xlsx into PDF/HTML
+  rendering, and the budget variance reports are formula-heavy (COMPAT.md §24).
+  **Still open** — an opt-in save-time evaluate-and-cache pass is the proposed
+  fix (PLAN.md §13, Phase 5 cross-cutting item 1)
+- **Style-after-write degrade** — styling rows *after* writing them queues the
+  work and triggers the one-time serialize-and-reopen at save, forfeiting the
+  streaming win. Both audited apps do this for subtotal/total rows. No API is
+  missing; the throughput claim just does not hold for that pattern
+  (COMPAT.md §9)
+- **Auto-filter does not hide rows** — column rules are recorded; Excel
+  re-applies on open (COMPAT.md §23)
+- **`Calculation` array-formula toggles** — the cache controls are accepted
+  no-ops since wave 4.1; calculation is delegated to excelize
+
+## Wave history
+
+Phase 5 (2026-08-19), scoped from the two-app audit:
+
+| Wave | Closed |
+|---|---|
+| 5.1 | `Shared\StringHelper`; consumer-side re-parenting of both `HTMLWriter`s from `Writer\Html` to `BaseWriter` |
+| 5.2 | `Writer`/`Reader`/`Calculation` exceptions, `Reader\IReader`, `Settings`, `Cell\CellAddress`+`AddressRange`, `Worksheet\BaseDrawing`, `Shared\File`+`Font`+`Drawing` |
+| 5.3 | `setBreak()`, `setSelectedCells()`, `calculateColumnWidths()` |
+| 5.4 | Chart axis model: `Chart\Axis`, `GridLines`, `Layout`, `ChartColor`, constructor axis params, `DataSeries::EMPTY_AS_*` |
+| 5.5 | Documentation of the by-design exclusions above |
+
+Phase 4 (2026-06-13) closed the probe-driven gaps in four waves: value
+binders, document properties, print layout, encryption, gradient fills and
+diagonal borders (4.1); iterators, read filters, style read-back and
+introspection (4.2); row/column/sheet structure editing, sheet views,
+headers/footers and margins (4.3); rich text, memory drawings, the
+`Chart\*` object model and auto-filter column rules (4.4).
 
 ## Verified against PhpSpreadsheet
 
