@@ -20,6 +20,15 @@ GD `MemoryDrawing`, the PhpSpreadsheet `Chart\*` object model
 later audit of two production report apps found further gaps, listed below;
 they are a mix of by-design exclusions and unclaimed surface.
 
+Closed by wave 5.1 (2026-08-19): `Shared\StringHelper` (found by checking
+every `PhpOffice\*` import in the four consumer writer files against Compat —
+33 of 34 now resolve). Wave 5.1's main work was consumer-side: re-parenting
+both apps' `HTMLWriter` from `Writer\Html` to `Writer\BaseWriter`, which the
+tokenizer confirmed inherited nothing but the constructor. `Style\Conditional
+Formatting\MergedCellStyle` remains the one unresolved writer import — it
+needs `StyleMerger` plus table-style resolution, so it is a subsystem, not a
+quick win.
+
 Closed by wave 5.2 (2026-08-19): `Writer\Exception`, `Reader\Exception` and
 `Calculation\Exception` (narrow types that still satisfy broad catches, and
 the writers/readers now throw them); `Reader\IReader` (both readers

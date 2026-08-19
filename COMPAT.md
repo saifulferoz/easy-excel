@@ -98,7 +98,7 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Settings | `Settings::setChartRenderer/getChartRenderer/unsetChartRenderer`, libxml + cache + HTTP-client accessors | **state-only**: values round-trip so consuming code behaves, but nothing reads them back. `setChartRenderer` is deliberately accepted rather than thrown — its callers guard an HTML/PDF preview path, and throwing would break otherwise-supported workbook generation |
 | Cell addressing | `Cell\CellAddress` (`fromCellAddress`/`fromColumnAndRow`, `columnName`/`columnId`/`rowId`, `cellAddress`/`absoluteCellAddress`, `next`/`previous` row+column), `Cell\AddressRange` (`fromCellRange`, `from`/`to`, `cellRange`/`absoluteCellRange`) | immutable value objects over `Coordinate`; ranges normalise so `from()` is always top-left (`D9:B2` → `B2:D9`); navigation clamps at row 1 / column A |
 | Drawings | `Worksheet\BaseDrawing` | extracted as the genuine shared parent of `Drawing` and `MemoryDrawing` (name, description, coordinates, offsets, size, owning sheet) rather than added alongside them; attachment stays per-subclass because each sends a different payload |
-| Shared helpers | `Shared\Drawing` (points/pixels/EMU/cm/inch/degree conversions, `cellDimensionToPixels`, `pixelsToCellDimension`), `Shared\Font` (`getDefaultRowHeightByFont`, `getCharacterWidth`, auto-size method), `Shared\File` (`sysGetTempDir`, `temporaryFilename`, upload-temp-dir toggle, `fileExists`, `realpath`) | pure PHP. `Shared\File::sysGetTempDir()` is canonicalised with `realpath()` so it matches the paths `tempnam()` actually returns (macOS reports `/var/…` but creates under `/private/var/…`) |
+| Shared helpers | `Shared\StringHelper` (`stringIncrement`, `formatNumber`, `convertToString`, control-character escaping both ways, multibyte case/substring/count, separators), `Shared\Drawing` (points/pixels/EMU/cm/inch/degree conversions, `cellDimensionToPixels`, `pixelsToCellDimension`), `Shared\Font` (`getDefaultRowHeightByFont`, `getCharacterWidth`, auto-size method), `Shared\File` (`sysGetTempDir`, `temporaryFilename`, upload-temp-dir toggle, `fileExists`, `realpath`) | pure PHP. `Shared\File::sysGetTempDir()` is canonicalised with `realpath()` so it matches the paths `tempnam()` actually returns (macOS reports `/var/…` but creates under `/private/var/…`). `StringHelper` is verified byte-identical to real PhpSpreadsheet across every method the writers call, including `formatNumber(null) === ''` and `stringIncrement` via `str_increment()` (bare `++` on a string is deprecated in PHP 8.3+) |
 
 ## Documented divergences
 
@@ -270,6 +270,16 @@ MISSING.md for per-API counts and priority. The rest are known gaps with no
 observed consumer yet.
 
 ### Writer extension points (the main blocker for real apps) — [audited]
+
+> **Wave 5.1 resolved this for the audited apps by removing the dependency
+> rather than adding it.** Both `HTMLWriter extends Html` subclasses were
+> standalone renderers that inherited nothing from `Html` beyond the
+> constructor (verified by tokenizing every `$this->` use: the only inherited
+> members were `processFlags`, `openFileHandle`, `maybeCloseFileHandle`,
+> `$fileHandle`, `$includeCharts`, `$preCalculateFormulas` — all from
+> `BaseWriter`). Re-parenting them to `BaseWriter` is a consumer-side change
+> that costs the shim nothing. The entry below still stands for anyone
+> genuinely overriding `Html`'s internals.
 
 - `Writer\Html` **subclassing** — the Compat writer is an independent pure-PHP
   renderer, not a port: its internals differ, so a `class X extends Html`
