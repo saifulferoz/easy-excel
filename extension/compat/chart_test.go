@@ -141,13 +141,13 @@ func TestTranslateChartAxisDoesNotBreakBasics(t *testing.T) {
 	if c.Legend.Position != "bottom" {
 		t.Errorf("legend = %q", c.Legend.Position)
 	}
-	if len(c.Title) == 0 || c.Title[0].Text != "T" {
+	if len(c.Title.Paragraph) == 0 || c.Title.Paragraph[0].Text != "T" {
 		t.Error("title lost")
 	}
-	if len(c.XAxis.Title) == 0 || c.XAxis.Title[0].Text != "X" {
+	if len(c.XAxis.Title.Paragraph) == 0 || c.XAxis.Title.Paragraph[0].Text != "X" {
 		t.Error("x axis title lost when an axis block is present")
 	}
-	if len(c.YAxis.Title) == 0 || c.YAxis.Title[0].Text != "Y" {
+	if len(c.YAxis.Title.Paragraph) == 0 || c.YAxis.Title.Paragraph[0].Text != "Y" {
 		t.Error("y axis title lost when an axis block is present")
 	}
 	if c.Dimension.Width != 480 || c.Dimension.Height != 290 {
