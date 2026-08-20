@@ -62,7 +62,7 @@ func TranslateChart(jsonSpec string) (*excelize.Chart, error) {
 		})
 	}
 	if spec.Title != "" {
-		chart.Title = []excelize.RichTextRun{{Text: spec.Title}}
+		chart.Title = excelize.ChartTitle{Paragraph: []excelize.RichTextRun{{Text: spec.Title}}}
 	}
 	switch spec.Legend.Position {
 	case "":
@@ -72,10 +72,10 @@ func TranslateChart(jsonSpec string) (*excelize.Chart, error) {
 		return nil, fmt.Errorf("easy-excel: unsupported legend position %q", spec.Legend.Position)
 	}
 	if spec.XAxisTitle != "" {
-		chart.XAxis.Title = []excelize.RichTextRun{{Text: spec.XAxisTitle}}
+		chart.XAxis.Title = excelize.ChartTitle{Paragraph: []excelize.RichTextRun{{Text: spec.XAxisTitle}}}
 	}
 	if spec.YAxisTitle != "" {
-		chart.YAxis.Title = []excelize.RichTextRun{{Text: spec.YAxisTitle}}
+		chart.YAxis.Title = excelize.ChartTitle{Paragraph: []excelize.RichTextRun{{Text: spec.YAxisTitle}}}
 	}
 	if spec.Width > 0 {
 		chart.Dimension.Width = spec.Width
