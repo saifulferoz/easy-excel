@@ -448,19 +448,31 @@ class Worksheet
         return $this->conditionalRegistry[$range] ?? [];
     }
 
+    /** @var array<string, ColumnDimension> */
+    private array $columnDimensions = [];
+
+    /** @var array<int, RowDimension> */
+    private array $rowDimensions = [];
+
+    /**
+     * Dimensions are cached per column/row so a width or height written
+     * through one call is readable through the next. PhpSpreadsheet's Html
+     * writer reads the width back via getWidth(), so handing out a fresh
+     * instance each call made every column fall back to the writer's default.
+     */
     public function getColumnDimension(string $column): ColumnDimension
     {
-        return new ColumnDimension($this, $column);
+        return $this->columnDimensions[$column] ??= new ColumnDimension($this, $column);
     }
 
     public function getColumnDimensionByColumn(int $columnIndex): ColumnDimension
     {
-        return new ColumnDimension($this, Coordinate::stringFromColumnIndex($columnIndex));
+        return $this->getColumnDimension(Coordinate::stringFromColumnIndex($columnIndex));
     }
 
     public function getRowDimension(int $row): RowDimension
     {
-        return new RowDimension($this, $row);
+        return $this->rowDimensions[$row] ??= new RowDimension($this, $row);
     }
 
     private ?RowDimension $defaultRowDimension = null;
