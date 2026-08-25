@@ -642,11 +642,20 @@ class Html extends BaseWriter
 
         // Borders
         if (isset($style['borders'])) {
+            // allBorders applies to every side unless a side overrides it.
+            $allBorders = $style['borders']['allBorders'] ?? null;
             foreach (['top', 'bottom', 'left', 'right'] as $borderName) {
-                if (isset($style['borders'][$borderName])) {
-                    $border = $style['borders'][$borderName];
+                $border = $style['borders'][$borderName] ?? $allBorders;
+                if (null !== $border) {
                     $borderStyle = $border['borderStyle'] ?? 'none';
-                    if ($borderStyle !== 'none') {
+                    if ($borderStyle === 'none') {
+                        // An explicit BORDER_NONE must emit a rule: the
+                        // sheet-wide `table.sheet td` border would otherwise
+                        // stay visible, since nothing overrides it. Cells that
+                        // were never styled have no 'borders' key at all, so
+                        // they keep the sheet default.
+                        $rules[] = "border-{$borderName}: none;";
+                    } else {
                         $width = '1px';
                         if (\str_contains($borderStyle, 'medium')) {
                             $width = '2px';
