@@ -33,7 +33,7 @@ exports native and route one report to upstream.
   renderer, not a port, so overriding its protected internals does not
   compose. The public writer API is supported; wave 5.1 showed the audited
   apps never needed the inheritance at all
-- **`Writer\Pdf`**, and readers/writers for Ods, Xls, Slk, Gnumeric
+- Readers/writers for Ods, Xls, Slk, Gnumeric
 - **`getCellCollection()`** — cell data lives in Go, not in a PHP collection
 
 ## Open gaps (no observed consumer yet)

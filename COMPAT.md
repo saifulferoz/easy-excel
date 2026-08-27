@@ -404,7 +404,16 @@ matches manually where an app needs the merged result.
 
 ### Formats
 
-Readers/Writers: Ods, Xls, Pdf, Slk, Gnumeric — not planned for the native
+Readers/Writers: Ods, Xls, Slk, Gnumeric — not planned for the native
 engine. In `strict` mode these throw `UnsupportedApiException`; use
 `fallback`/`off` with a real `phpoffice/phpspreadsheet` install, or convert
 externally.
+
+`Writer\Pdf` is supported as a **print-ready HTML** writer: it extends the
+Compat HTML writer and carries PhpSpreadsheet's Pdf page-setup surface
+(`get/setPaperSize`, `get/setOrientation`, `get/setFont`, `get/setTempDir`),
+plus `resolvePaperSize()` / `resolveOrientation()` which fold the writer
+override together with the sheet's own page setup. It does **not** embed a PDF
+engine — no Mpdf/Tcpdf/Dompdf subclasses — so the HTML→PDF step stays with
+whatever the application already runs (wkhtmltopdf via knp-snappy, a headless
+browser, a CLI converter). `save()` writes the HTML.
