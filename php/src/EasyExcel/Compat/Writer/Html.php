@@ -507,6 +507,17 @@ class Html extends BaseWriter
                 $html .= '</table>' . $eol;
             }
 
+            // A rowspan cannot cross the thead/tbody boundary: the browser
+            // clamps it at the end of the section, which would drop the
+            // covered cells out of alignment. Extend the header section to
+            // cover any merge that starts inside it.
+            foreach ($sheet->getMergeCells() as $mergeRange) {
+                [[, $mergeStartRow], [, $mergeEndRow]] = Coordinate::rangeBoundaries($mergeRange);
+                if ($mergeStartRow >= $repeatStart && $mergeStartRow <= $repeatEnd && $mergeEndRow > $repeatEnd) {
+                    $repeatEnd = $mergeEndRow;
+                }
+            }
+
             // Write table 2 with thead (repeat rows) and tbody (subsequent rows)
             $html .= '<table class="sheet" id="sheet' . $index . '_repeated">' . $eol;
             if ($repeatStart <= 1) {
