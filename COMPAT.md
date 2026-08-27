@@ -404,7 +404,30 @@ matches manually where an app needs the merged result.
 
 ### Formats
 
-Readers/Writers: Ods, Xls, Pdf, Slk, Gnumeric — not planned for the native
+Readers/Writers: Ods, Xls, Slk, Gnumeric — not planned for the native
 engine. In `strict` mode these throw `UnsupportedApiException`; use
 `fallback`/`off` with a real `phpoffice/phpspreadsheet` install, or convert
 externally.
+
+`Writer\Pdf` is supported, and keeps upstream's shape: an **abstract** base
+carrying the HTML renderer and the page setup (`get/setPaperSize`,
+`get/setOrientation`, `get/setFont`, `get/setTempDir`, plus
+`resolvePaperSize()` / `resolveOrientation()` which fold the writer override
+together with the sheet's own page setup), with the HTML→PDF step supplied by
+a driver subclass. The consumer picks a driver by class, exactly as upstream:
+
+| Driver | Requires |
+| --- | --- |
+| `Writer\Pdf\Mpdf` | `mpdf/mpdf` |
+| `Writer\Pdf\Tcpdf` | `tecnickcom/tcpdf` |
+| `Writer\Pdf\Dompdf` | `dompdf/dompdf` |
+| `Writer\Pdf\Snappy` | `knplabs/knp-snappy` + a `wkhtmltopdf` binary |
+
+`Snappy` has no counterpart upstream: the others embed a PHP rendering engine,
+it shells out to wkhtmltopdf. Because the binary renders with a real browser
+engine it handles CSS the PHP engines do not, so it suits heavily styled
+reports; inject the Snappy instance with `setSnappy()` before saving.
+
+The polyfill requires none of these libraries — a driver whose library is
+absent throws and names the package to install. `IOFactory::createWriter()`
+does not map `'Pdf'`, again as upstream, since the base is abstract.
