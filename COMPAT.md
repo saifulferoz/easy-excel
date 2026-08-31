@@ -123,7 +123,7 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 
 | Area | API | Notes |
 |---|---|---|
-| Pre-calculated results | `Writer\Xlsx::setPreCalculateFormulas(bool)`, `DISABLE_PRECALCULATE_FORMULAE` save flag | **opt-in**: the getter reports upstream's `true` default, but the pass runs only on an explicit call, so inheriting the default never costs streaming. Numeric results only, and cached cells are typed `t="str"` so their number format does not render — see divergence 24 |
+| Pre-calculated results | `Writer\Xlsx::setPreCalculateFormulas(bool)`, `DISABLE_PRECALCULATE_FORMULAE` save flag | **opt-in**: the getter reports upstream's `true` default, but the pass runs only on an explicit call, so inheriting the default never costs streaming. Numeric results only; the `t="str"` excelize forces on formula cells is corrected by a container patch so number formats still apply — see divergence 24 |
 | Recalculate-on-open | `Native::setFullCalcOnLoad(int $handle, bool)` (easy-excel extra, default **on**) | sets `calcPr/@fullCalcOnLoad`; costs one attribute and never degrades. Fixes spreadsheet applications; does nothing for readers that never calculate, which is what the cache above is for |
 
 ## Documented divergences
@@ -217,7 +217,7 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     non-matching rows; Excel re-applies the filter on open. PhpSpreadsheet
     behaves the same. Column rules also accept at most two clauses joined by
     AND/OR (the OOXML custom-filter limit).
-24. **Formula cache: opt-in, numeric-only, and typed as text** —
+24. **Formula cache: opt-in and numeric-only** —
     `Writer\Xlsx::setPreCalculateFormulas(true)` evaluates every formula at
     save and stores the result beside it, so readers that trust the cached
     `<v>` show values rather than blanks.
@@ -230,13 +230,17 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     **Numeric results only.** A text or boolean result cannot be cached
     correctly — excelize writes a shared-string *index* into `<v>`, which reads
     back as `0`/`1`. Those, and error results, recompute on open.
-    **Cached cells are emitted `t="str"`.** `SetCellFormula` ends with an
-    unconditional `c.T = "str"` and excelize exposes no way to reset it
-    (writing the value last clears the formula instead). A cached numeric
-    result is therefore readable as a value but its **number format does not
-    apply** to a reader that does not recalculate: a `#,##0` total renders
-    `2500`, not `2,500`. This is a real fidelity loss, which is why the pass is
-    opt-in and `fullCalcOnLoad` is the default mitigation.
+    **Cell type is corrected at save.** excelize's `SetCellFormula` ends with an
+    unconditional `c.T = "str"` and exposes no way to reset it (every value
+    setter calls `removeFormula`, so writing the value afterwards deletes the
+    formula). In OOXML `t="str"` means *formula returning a string*, so a
+    cached number would lose its format — a `#,##0` total rendering `2500`
+    instead of `2,500`, and excelize's own reader takes a
+    `case "str": return c.V` path that skips formatting entirely. The saved
+    container is therefore patched, exactly as streaming auto-filters already
+    are: the attribute is dropped from formula cells whose cached `<v>` parses
+    as a number, leaving genuine string results untouched. Both passes compose
+    when a save needs both.
     Independently, `calcPr/@fullCalcOnLoad` is set by default (free, one
     attribute): spreadsheet **applications** recalculate on open regardless.
     Disable via `Native::setFullCalcOnLoad($handle, false)`.

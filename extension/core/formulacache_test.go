@@ -431,12 +431,12 @@ func TestPrecalculateOnLoadedFileWithoutFormulas(t *testing.T) {
 	}
 }
 
-// Documents the excelize limitation behind review blocker 1: SetCellFormula
-// ends with an unconditional c.T = "str", so a cached numeric result is
-// emitted as text and its number format is not applied by a reader that does
-// not recalculate. Pinned so the day excelize gains a way to reset the type,
-// this test fails and the workaround can be removed.
-func TestPrecalculateCachedCellIsTypedStr(t *testing.T) {
+// Review blocker 1: a cached numeric result must NOT be typed "str".
+// excelize emits t="str" for every formula cell and offers no way to reset it,
+// so the saved container is patched (formulatypepatch.go). Without that, a
+// reader trusting the cached value skips number formatting and a #,##0 total
+// renders 2500 instead of 2,500.
+func TestPrecalculateCachedNumericIsNotTypedStr(t *testing.T) {
 	w, err := New(testEnv())
 	if err != nil {
 		t.Fatal(err)
@@ -460,22 +460,52 @@ func TestPrecalculateCachedCellIsTypedStr(t *testing.T) {
 	}
 
 	f := reopen(t, path)
-	// The value is cached and readable...
-	raw, _ := f.GetCellValue("Worksheet", "C1", excelize.Options{RawCellValue: true})
-	if raw != "2500" {
+	if formula, _ := f.GetCellFormula("Worksheet", "C1"); formula != "SUM(A1:B1)" {
+		t.Errorf("formula = %q, want SUM(A1:B1) — the patch must not disturb it", formula)
+	}
+	if raw, _ := f.GetCellValue("Worksheet", "C1", excelize.Options{RawCellValue: true}); raw != "2500" {
 		t.Errorf("cached value = %q, want 2500", raw)
 	}
-	// ...but typed as text, so the number format does not render.
-	typ, err := f.GetCellType("Worksheet", "C1")
+	// The point of the fix: the number format now applies.
+	displayed, err := f.GetCellValue("Worksheet", "C1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if typ != excelize.CellTypeSharedString && typ != excelize.CellTypeInlineString {
-		t.Logf("cached cell type = %v; if excelize now preserves the numeric "+
-			"type, drop the t=str caveat from COMPAT.md §24", typ)
+	if displayed != "2,500" {
+		t.Errorf("displayed = %q, want \"2,500\" — number format must apply to a cached numeric result", displayed)
 	}
-	if displayed, _ := f.GetCellValue("Worksheet", "C1"); displayed == "2,500" {
-		t.Error("number format now applies to cached cells — the documented " +
-			"limitation is fixed and COMPAT.md §24 should be updated")
+}
+
+// A formula whose result really is text must keep t="str": the patch is
+// numeric-only, and mislabelling a string as a number would corrupt it.
+func TestPrecalculateLeavesTextFormulasTyped(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.SetPrecalculateFormulas(true); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "text.xlsx")
+	if err := w.WriteRows("Worksheet", 1, 1, [][]compat.Cell{
+		mustCells(t, 5.0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	setFormula(t, w, "B1", `IF(A1>1,"big","small")`)
+	setFormula(t, w, "C1", "A1*2")
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	f := reopen(t, path)
+	// the text formula still recomputes correctly...
+	if v, _ := f.CalcCellValue("Worksheet", "B1"); v != "big" {
+		t.Errorf("text formula = %q, want big", v)
+	}
+	// ...and the numeric one beside it is cached and untyped
+	if raw, _ := f.GetCellValue("Worksheet", "C1", excelize.Options{RawCellValue: true}); raw != "10" {
+		t.Errorf("numeric cached = %q, want 10", raw)
 	}
 }

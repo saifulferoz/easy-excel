@@ -937,33 +937,60 @@ func (w *Workbook) SaveXlsx(path, password string) error {
 	if password != "" {
 		return w.saveAsAnyPath(abs, excelize.Options{Password: password})
 	}
-	patches := w.filterPatches()
-	if len(patches) == 0 {
-		return w.saveAsAnyPath(abs)
-	}
-	tmp := abs + ".unpatched.xlsx" // excelize validates the extension
-	if err := w.f.SaveAs(tmp); err != nil {
-		return err
-	}
-	defer os.Remove(tmp)
-	src, err := os.Open(tmp)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	fi, err := src.Stat()
-	if err != nil {
-		return err
-	}
 	out, err := os.Create(abs)
 	if err != nil {
 		return err
 	}
-	if err := patchAutoFilters(src, fi.Size(), out, patches); err != nil {
+	if err := w.writeXlsxTo(out); err != nil {
 		out.Close()
 		return err
 	}
 	return out.Close()
+}
+
+// containerPasses is the ordered list of post-save rewrites this workbook
+// needs. Both are streaming zip rewrites over the saved container; keeping
+// them in one list means a save that needs both composes them instead of one
+// silently overwriting the other's output.
+func (w *Workbook) containerPasses() []func(io.ReaderAt, int64, io.Writer) error {
+	var passes []func(io.ReaderAt, int64, io.Writer) error
+	if patches := w.filterPatches(); len(patches) > 0 {
+		passes = append(passes, func(src io.ReaderAt, size int64, dst io.Writer) error {
+			return patchAutoFilters(src, size, dst, patches)
+		})
+	}
+	if w.precalculate {
+		// excelize emits every formula cell t="str", which suppresses the
+		// number format of a cached numeric result for readers that trust the
+		// cache (formulatypepatch.go).
+		passes = append(passes, patchNumericFormulaTypes)
+	}
+	return passes
+}
+
+// writeXlsxTo serialises the workbook and runs each container pass in turn,
+// buffering between passes.
+func (w *Workbook) writeXlsxTo(out io.Writer) error {
+	passes := w.containerPasses()
+	if len(passes) == 0 {
+		return w.f.Write(out)
+	}
+	var buf bytes.Buffer
+	if err := w.f.Write(&buf); err != nil {
+		return err
+	}
+	for i, pass := range passes {
+		last := i == len(passes)-1
+		if last {
+			return pass(bytes.NewReader(buf.Bytes()), int64(buf.Len()), out)
+		}
+		var next bytes.Buffer
+		if err := pass(bytes.NewReader(buf.Bytes()), int64(buf.Len()), &next); err != nil {
+			return err
+		}
+		buf = next
+	}
+	return nil
 }
 
 // WriteXlsxTo streams the workbook to an arbitrary writer (php:// targets).
@@ -981,24 +1008,7 @@ func (w *Workbook) WriteXlsxTo(out io.Writer) error {
 	if err := w.settleForSave(true); err != nil {
 		return err
 	}
-	patches := w.filterPatches()
-	if len(patches) == 0 {
-		return w.f.Write(out)
-	}
-	tmp, err := os.CreateTemp("", "easyexcel-*.xlsx")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	defer tmp.Close()
-	if err := w.f.Write(tmp); err != nil {
-		return err
-	}
-	fi, err := tmp.Stat()
-	if err != nil {
-		return err
-	}
-	return patchAutoFilters(tmp, fi.Size(), out, patches)
+	return w.writeXlsxTo(out)
 }
 
 // settleForSave brings the workbook into a saveable state: queued structure
