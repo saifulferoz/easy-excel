@@ -1,7 +1,9 @@
 package core
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/xuri/excelize/v2"
@@ -165,4 +167,66 @@ func indexOf(h, n string) int {
 		}
 	}
 	return -1
+}
+
+func countStages(t *testing.T) int {
+	t.Helper()
+	m, _ := filepath.Glob(filepath.Join(os.TempDir(), "easyexcel-*.xlsx"))
+	return len(m)
+}
+
+// Both container passes stage through temp files; none may survive the save.
+func TestWriteXlsxToLeavesNoTempFiles(t *testing.T) {
+	before := countStages(t)
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.SetPrecalculateFormulas(true); err != nil {
+		t.Fatal(err)
+	}
+	fillRows(t, w, "Worksheet", 1, 20)
+	setFormula(t, w, "D21", "SUM(B1:B20)")
+	if err := w.AutoFilter("Worksheet", "A1:C20"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(filepath.Join(t.TempDir(), "x.xlsx"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if after := countStages(t); after != before {
+		t.Errorf("temp files leaked: %d before, %d after", before, after)
+	}
+}
+
+// The staged destination must not survive either, and a failed save must not
+// destroy an existing file.
+func TestSaveXlsxDoesNotLeaveStagedFile(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.SetPrecalculateFormulas(true); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.xlsx")
+	fillRows(t, w, "Worksheet", 1, 5)
+	setFormula(t, w, "D6", "SUM(B1:B5)")
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".eexcel.") {
+			t.Errorf("staged file left behind: %s", e.Name())
+		}
+	}
+	if len(entries) != 1 {
+		t.Errorf("expected exactly the output file, got %d entries", len(entries))
+	}
 }

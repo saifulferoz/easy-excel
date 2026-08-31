@@ -1020,12 +1020,32 @@ func (w *Workbook) writeXlsxTo(out io.Writer) error {
 	if len(passes) == 0 {
 		return w.f.Write(out)
 	}
-	stage, err := os.CreateTemp("", "easyexcel-*.xlsx")
+
+	// Temp files, not buffers: these passes exist to serve large streamed
+	// exports, and holding the container in memory would give back the
+	// constant-memory property the StreamWriter provides. Each is tracked so
+	// one cleanup path removes them all — deferring inside the loop would
+	// both accumulate and close whichever file the variable last pointed at.
+	var stages []*os.File
+	defer func() {
+		for _, f := range stages {
+			f.Close()
+			os.Remove(f.Name())
+		}
+	}()
+	newStage := func() (*os.File, error) {
+		f, err := os.CreateTemp("", "easyexcel-*.xlsx")
+		if err != nil {
+			return nil, err
+		}
+		stages = append(stages, f)
+		return f, nil
+	}
+
+	stage, err := newStage()
 	if err != nil {
 		return err
 	}
-	defer os.Remove(stage.Name())
-	defer stage.Close()
 	if err := w.f.Write(stage); err != nil {
 		return err
 	}
@@ -1034,22 +1054,20 @@ func (w *Workbook) writeXlsxTo(out io.Writer) error {
 		if err != nil {
 			return err
 		}
+		if _, err := stage.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
 		if i == len(passes)-1 {
 			return pass(stage, fi.Size(), out)
 		}
-		next, err := os.CreateTemp("", "easyexcel-*.xlsx")
+		next, err := newStage()
 		if err != nil {
 			return err
 		}
-		err = pass(stage, fi.Size(), next)
-		stage.Close()
-		os.Remove(stage.Name())
+		if err := pass(stage, fi.Size(), next); err != nil {
+			return err
+		}
 		stage = next
-		defer os.Remove(stage.Name())
-		defer stage.Close()
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }
