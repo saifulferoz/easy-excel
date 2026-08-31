@@ -61,6 +61,28 @@ return [
         T::same(33.0, $ws->getRowDimension(3)->getRowHeight(), 'read-back preserved');
     },
 
+    // ---- getCalculatedValue must not mangle numeric-looking strings ------
+
+    'calc: a formatted string result keeps its leading zeros' => function (): void {
+        EasyExcelFake::reset();
+        $s = new Spreadsheet();
+        $ws = $s->getActiveSheet();
+        // is_numeric('0042') is true, so a bare cast would return 42 and drop
+        // the zero padding the formula exists to produce.
+        EasyExcelFake::$calculated['A1'] = '0042';
+        T::same('0042', $ws->getCell('A1')->getCalculatedValue(), 'string preserved');
+    },
+
+    'calc: a genuine numeric result is still cast to a number' => function (): void {
+        EasyExcelFake::reset();
+        $s = new Spreadsheet();
+        $ws = $s->getActiveSheet();
+        EasyExcelFake::$calculated['A1'] = '1542';
+        T::same(1542, $ws->getCell('A1')->getCalculatedValue(), 'canonical integer casts');
+        EasyExcelFake::$calculated['A2'] = '-0.75';
+        T::same(-0.75, $ws->getCell('A2')->getCalculatedValue(), 'canonical float casts');
+    },
+
     // ---- review item 6: Settings matches the real upstream surface -------
 
     'review6: Settings exposes upstream members, not invented ones' => function (): void {

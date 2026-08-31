@@ -111,7 +111,11 @@ func (w *Workbook) panesWithSelection(sheet, ref, activeCell string) (*excelize.
 	panes := &excelize.Panes{}
 	if existing, err := w.f.GetPanes(sheet); err == nil {
 		panes.Freeze = existing.Freeze
-		panes.Split = existing.Split
+		// excelize's GetPanes never populates Split — it derives Freeze from
+		// state == "frozen" and leaves Split zero — so copying it would
+		// silently convert a split-pane sheet to no-split. Infer it: a pane
+		// record with a split offset that is not frozen is a split pane.
+		panes.Split = !existing.Freeze && (existing.XSplit > 0 || existing.YSplit > 0)
 		panes.XSplit = existing.XSplit
 		panes.YSplit = existing.YSplit
 		panes.TopLeftCell = existing.TopLeftCell

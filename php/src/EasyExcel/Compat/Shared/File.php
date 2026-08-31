@@ -13,9 +13,10 @@ final class File
 {
     private static bool $useUploadTempDirectory = false;
 
-    /** Route temp files through PHP's upload_tmp_dir instead of the system dir. */
     /**
-     * Store the flag, not the resolved path: upload_tmp_dir is commonly empty,
+     * Route temp files through PHP's upload_tmp_dir instead of the system dir.
+     *
+     * Stores the flag, not the resolved path: upload_tmp_dir is commonly empty,
      * and caching its value here made the setter silently a no-op on those
      * configurations. The directory is resolved at use time, as upstream does.
      */

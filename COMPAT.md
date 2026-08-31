@@ -129,10 +129,12 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 ## Documented divergences
 
 1. **`toArray(formatData: false)` types** — values come back from excelize as
-   strings and are cast with `is_numeric()`. Text cells that *look* numeric
-   (e.g. `"1e3"` stored explicitly as a string) come back as numbers, where
-   PhpSpreadsheet preserves them. Explicitly-typed strings written in the
-   same session are safe; re-loaded files lose that distinction.
+   strings and are cast when the string is the *canonical* rendering of the
+   number, so `"1542"` becomes `1542` while `"0042"`, `"1.50"` and `" 3"` stay
+   strings. `getCalculatedValue()` follows the same rule, so a
+   `TEXT(A1,"0000")` result keeps its leading zeros. Bulk `toArray` reads still
+   use the looser `is_numeric()` cast, so a text cell that looks numeric can
+   come back as a number there.
 2. **`toArray($calculateFormulas)`** — bulk reads return raw or formatted
    values; the flag is currently honored only by `Cell::getCalculatedValue()`
    (excelize's ~535-function engine). Bulk calculated reads land in Phase 3.
@@ -227,9 +229,16 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     default would read every formula back and force a streamed workbook into
     the full in-memory model — an OOM risk on million-row exports, and a
     silent trade of the property this engine exists for.
-    **Numeric results only.** A text or boolean result cannot be cached
-    correctly — excelize writes a shared-string *index* into `<v>`, which reads
-    back as `0`/`1`. Those, and error results, recompute on open.
+    **Numeric results only, and the check is stricter than it looks.** A text
+    or boolean result cannot be cached correctly — excelize writes a
+    shared-string *index* into `<v>`, which reads back as `0`/`1`. Those, and
+    error results, recompute on open. `ParseFloat` alone is not sufficient to
+    decide: `TEXT(A1,"0000")` yields the *string* `"0042"`, which parses as 42
+    and would be cached — and rendered — as a number, losing the padding the
+    formula exists to produce. excelize's calc engine knows the real type
+    internally (`formulaArg.Type`) but `CalcCellValue` returns only a string,
+    so a float→string→float round trip is used instead: a genuine number
+    survives it unchanged, a formatted string does not.
     **Cell type is corrected at save.** excelize's `SetCellFormula` ends with an
     unconditional `c.T = "str"` and exposes no way to reset it (every value
     setter calls `removeFormula`, so writing the value afterwards deletes the
@@ -238,9 +247,12 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     instead of `2,500`, and excelize's own reader takes a
     `case "str": return c.V` path that skips formatting entirely. The saved
     container is therefore patched, exactly as streaming auto-filters already
-    are: the attribute is dropped from formula cells whose cached `<v>` parses
-    as a number, leaving genuine string results untouched. Both passes compose
-    when a save needs both.
+    are. The patch is driven by the **exact cell references this save cached**,
+    never by scanning for numeric-looking values, so formulas already present
+    in a loaded workbook are left exactly as they were. Worksheet parts with
+    nothing to change are copied without recompressing, and the passes stage
+    through a temp file rather than memory. Both compose when a save needs
+    both.
     Independently, `calcPr/@fullCalcOnLoad` is set by default (free, one
     attribute): spreadsheet **applications** recalculate on open regardless.
     Disable via `Native::setFullCalcOnLoad($handle, false)`.

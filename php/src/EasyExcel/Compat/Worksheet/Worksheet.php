@@ -451,13 +451,14 @@ class Worksheet
     /** @var array<string, ColumnDimension> */
     private array $columnDimensions = [];
 
-    /** @var array<int, RowDimension> */
     /**
      * Cap on retained RowDimension objects; see getRowDimension(). Chosen to
      * cover realistic "style the first N rows" patterns without letting a
      * per-row loop over a large export grow without bound.
      */
     private const ROW_DIMENSION_CACHE_LIMIT = 4096;
+
+    /** @var array<int, RowDimension> */
 
     private array $rowDimensions = [];
 

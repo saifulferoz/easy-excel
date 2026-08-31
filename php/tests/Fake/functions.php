@@ -17,12 +17,21 @@ final class EasyExcelFake
     /** @var list<array{0: string, 1: array}> */
     public static array $log = [];
 
+    /**
+     * Canned calculated results keyed by cell ref, so tests can exercise the
+     * shim's handling of what the engine returns without a real calc engine.
+     *
+     * @var array<string, mixed>
+     */
+    public static array $calculated = [];
+
     public static int $nextHandle = 1;
 
     public static function reset(): void
     {
         self::$store = [];
         self::$log = [];
+        self::$calculated = [];
         self::$nextHandle = 1;
     }
 
@@ -222,8 +231,12 @@ function easy_excel_get_cell(int $handle, string $sheet, string $cell, int $mode
     if ($mode === 1 && $v !== null) { // formatted
         $v = EasyExcelFake::stringify($v);
     }
-    if ($mode === 2) { // calculated: not supported by the fake
-        $v = \is_string($v) && \str_starts_with($v, '=') ? '#FAKE!' : $v;
+    if ($mode === 2) { // calculated
+        if (\array_key_exists($cell, EasyExcelFake::$calculated)) {
+            $v = EasyExcelFake::$calculated[$cell];
+        } else {
+            $v = \is_string($v) && \str_starts_with($v, '=') ? '#FAKE!' : $v;
+        }
     }
 
     return [$v, null];

@@ -2,6 +2,7 @@ package core
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -60,6 +61,16 @@ func (w *Workbook) SetPrecalculateFormulas(on bool) error {
 	return nil
 }
 
+// canonicalNumber normalises a raw calc result for comparison against the
+// round-tripped float: excelize emits uppercase scientific notation, and a
+// leading "+" is equivalent. Anything else that differs — leading zeros,
+// thousands separators, trailing padding — marks the value as a formatted
+// string rather than a number.
+func canonicalNumber(s string) string {
+	s = strings.TrimPrefix(s, "+")
+	return strings.ToUpper(s)
+}
+
 // applyCalcProps writes the fullCalcOnLoad flag. Called from the save path.
 //
 // Writes the flag in both directions: returning early when false left a
@@ -96,6 +107,7 @@ func (w *Workbook) applyCalcProps() error {
 // have to exist in the model before they can be read back and evaluated.
 func (w *Workbook) cacheFormulaResults() (int, error) {
 	cached := 0
+	w.cachedNumeric = map[string]map[string]bool{}
 	for _, name := range w.f.GetSheetList() {
 		rows, err := w.f.GetRows(name)
 		if err != nil {
@@ -122,9 +134,20 @@ func (w *Workbook) cacheFormulaResults() (int, error) {
 					// wrong or empty result.
 					continue
 				}
+				// ParseFloat alone is not enough to prove the *result* is a
+				// number: TEXT(A1,"0000") yields the string "0042", which
+				// parses as 42 and would be cached — and rendered — as a
+				// number, losing the leading zeros. excelize's calc engine
+				// knows the real type internally (formulaArg.Type) but
+				// CalcCellValue returns only a string, so the round trip is
+				// the available check: a genuine numeric result survives
+				// float→string→float unchanged, a formatted string does not.
 				number, err := strconv.ParseFloat(value, 64)
 				if err != nil {
 					continue // non-numeric — see the docblock
+				}
+				if strconv.FormatFloat(number, 'G', -1, 64) != canonicalNumber(value) {
+					continue // string result that merely looks numeric
 				}
 				// Order matters: the value write clears the formula, so the
 				// formula is restored immediately after. excelize keeps the
@@ -135,6 +158,10 @@ func (w *Workbook) cacheFormulaResults() (int, error) {
 				if err := w.f.SetCellFormula(name, cell, formula); err != nil {
 					return cached, err
 				}
+				if w.cachedNumeric[name] == nil {
+					w.cachedNumeric[name] = map[string]bool{}
+				}
+				w.cachedNumeric[name][cell] = true
 				cached++
 			}
 		}

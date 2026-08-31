@@ -3,94 +3,63 @@ package core
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/xuri/excelize/v2"
+
+	"github.com/xiidea/easy-excel/extension/compat"
 )
 
-// The patch is a regexp over worksheet XML, so its precision is the safety
-// boundary: a false positive relabels a genuine string result as a number.
-func TestNumericStrFormulaRegexp(t *testing.T) {
-	cases := []struct {
-		name  string
-		in    string
-		want  string
-		match bool
-	}{
-		{
-			name:  "numeric cached result loses t=str",
-			in:    `<c r="C1" s="1" t="str"><f>SUM(A1:B1)</f><v>2500</v></c>`,
-			want:  `<c r="C1" s="1"><f>SUM(A1:B1)</f><v>2500</v></c>`,
-			match: true,
-		},
-		{
-			name:  "negative value",
-			in:    `<c r="C1" t="str"><f>A1-B1</f><v>-0.75</v></c>`,
-			want:  `<c r="C1"><f>A1-B1</f><v>-0.75</v></c>`,
-			match: true,
-		},
-		{
-			name:  "scientific notation",
-			in:    `<c r="C1" t="str"><f>A1*B1</f><v>1.5E+10</v></c>`,
-			want:  `<c r="C1"><f>A1*B1</f><v>1.5E+10</v></c>`,
-			match: true,
-		},
-		{
-			name:  "leading-dot decimal",
-			in:    `<c r="C1" t="str"><f>A1/B1</f><v>.5</v></c>`,
-			want:  `<c r="C1"><f>A1/B1</f><v>.5</v></c>`,
-			match: true,
-		},
-		{
-			name:  "genuine string result keeps t=str",
-			in:    `<c r="B1" t="str"><f>IF(A1&gt;1,"big","small")</f><v>big</v></c>`,
-			match: false,
-		},
-		{
-			name:  "string result that starts with a digit keeps t=str",
-			in:    `<c r="B1" t="str"><f>A1&amp;"x"</f><v>5x</v></c>`,
-			match: false,
-		},
-		{
-			name:  "error result keeps its type",
-			in:    `<c r="B1" t="e"><f>1/0</f><v>#DIV/0!</v></c>`,
-			match: false,
-		},
-		{
-			name:  "formula without a cached value is untouched",
-			in:    `<c r="C1" t="str"><f>SUM(A1:B1)</f></c>`,
-			match: false,
-		},
-		{
-			name:  "a plain shared-string cell is untouched",
-			in:    `<c r="A1" t="s"><v>0</v></c>`,
-			match: false,
-		},
-		{
-			name:  "an inline string cell is untouched",
-			in:    `<c r="A1" t="inlineStr"><is><t>hi</t></is></c>`,
-			match: false,
-		},
+// retypeCells is the safety boundary: it must rewrite exactly the cells the
+// cache wrote and nothing else.
+func TestRetypeCellsTargetsOnlyCachedRefs(t *testing.T) {
+	const in = `<row r="1">` +
+		`<c r="A1" t="str"><f>TEXT(B1,"0000")</f><v>0042</v></c>` +
+		`<c r="B1" s="1" t="str"><f>SUM(C1:D1)</f><v>2500</v></c>` +
+		`<c r="C1" t="str"><f>IF(A1,"y","n")</f><v>y</v></c>` +
+		`</row>`
+
+	got := string(retypeCells([]byte(in), map[string]bool{"B1": true}))
+
+	if !contains(got, `<c r="B1" s="1"><f>SUM(C1:D1)</f><v>2500</v></c>`) {
+		t.Errorf("cached cell B1 should lose t=str:\n%s", got)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := string(reNumericStrFormula.ReplaceAll([]byte(tc.in), []byte("$1$2")))
-			if tc.match {
-				if got != tc.want {
-					t.Errorf("got  %s\nwant %s", got, tc.want)
-				}
-				return
-			}
-			if got != tc.in {
-				t.Errorf("must not rewrite:\n  in  %s\n  got %s", tc.in, got)
-			}
-		})
+	// The one that would corrupt: a genuine string result that looks numeric.
+	if !contains(got, `<c r="A1" t="str"><f>TEXT(B1,"0000")</f><v>0042</v></c>`) {
+		t.Errorf("uncached A1 must keep t=str — retyping it turns \"0042\" into 42:\n%s", got)
+	}
+	if !contains(got, `<c r="C1" t="str">`) {
+		t.Errorf("uncached string result must be untouched:\n%s", got)
 	}
 }
 
-func TestNeedsFormulaTypePatch(t *testing.T) {
-	if !needsFormulaTypePatch([]byte(`<c r="C1" t="str"><f>SUM(A1:B1)</f><v>1</v></c>`)) {
-		t.Error("should detect a numeric cached formula")
+// Shared-formula children are self-closing (<f t="shared" si="0"/>); walking
+// start tags rather than whole elements means they are handled like any other.
+func TestRetypeCellsHandlesSharedFormulaChildren(t *testing.T) {
+	const in = `<c r="C2" t="str"><f t="shared" si="0"/><v>2500</v></c>`
+	got := string(retypeCells([]byte(in), map[string]bool{"C2": true}))
+	if got != `<c r="C2"><f t="shared" si="0"/><v>2500</v></c>` {
+		t.Errorf("shared-formula child not retyped: %s", got)
 	}
-	if needsFormulaTypePatch([]byte(`<c r="A1"><v>1</v></c>`)) {
-		t.Error("should not fire on a plain numeric cell")
+}
+
+func TestRetypeCellsLeavesUnrelatedMarkupAlone(t *testing.T) {
+	for _, in := range []string{
+		`<c r="A1" t="s"><v>0</v></c>`,
+		`<c r="A1" t="inlineStr"><is><t>hi</t></is></c>`,
+		`<c r="A1" t="e"><f>1/0</f><v>#DIV/0!</v></c>`,
+		`<sheetData/>`,
+		`<c r="A1"><v>1</v></c>`,
+	} {
+		if got := string(retypeCells([]byte(in), map[string]bool{"Z99": true})); got != in {
+			t.Errorf("rewrote unrelated markup:\n  in  %s\n  got %s", in, got)
+		}
+	}
+}
+
+func TestRetypeCellsToleratesMalformedTag(t *testing.T) {
+	const in = `<c r="A1" t="str"` // truncated, no closing '>'
+	if got := string(retypeCells([]byte(in), map[string]bool{"A1": true})); got != in {
+		t.Errorf("malformed input must pass through unchanged, got %s", got)
 	}
 }
 
@@ -112,8 +81,44 @@ func TestIsWorksheetPart(t *testing.T) {
 	}
 }
 
-// Both container patches can apply to one save; the second must not undo the
-// first, and the file must stay a valid workbook.
+// End-to-end: a string result that looks numeric must survive a save that also
+// caches a real numeric total.
+func TestPrecalculateDoesNotCorruptNumericLookingText(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.SetPrecalculateFormulas(true); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "text.xlsx")
+	if err := w.WriteRows("Worksheet", 1, 1, [][]compat.Cell{
+		mustCells(t, 42.0, 1500.0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	setFormula(t, w, "C1", `TEXT(A1,"0000")`) // string result "0042"
+	setFormula(t, w, "D1", "SUM(A1:B1)")      // genuine numeric
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	f := reopen(t, path)
+	// The string result is deliberately NOT cached — caching it would store
+	// 42 and lose the leading zeros — so it recomputes on open, correctly.
+	if v, _ := f.CalcCellValue("Worksheet", "C1"); v != "0042" {
+		t.Errorf("TEXT() recomputes to %q, want 0042", v)
+	}
+	if raw, _ := f.GetCellValue("Worksheet", "C1", excelize.Options{RawCellValue: true}); raw == "42" {
+		t.Error("TEXT() result was cached as the number 42 — leading zeros lost")
+	}
+	if v, _ := f.GetCellValue("Worksheet", "D1", excelize.Options{RawCellValue: true}); v != "1542" {
+		t.Errorf("numeric total = %q, want 1542", v)
+	}
+}
+
+// Both container patches on one save: neither may discard the other.
 func TestFormulaTypePatchComposesWithAutoFilter(t *testing.T) {
 	w, err := New(testEnv())
 	if err != nil {
@@ -137,14 +142,8 @@ func TestFormulaTypePatchComposesWithAutoFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The filter may come from the container patch or, when a style forces a
-	// degrade, from excelize's model writer — the element differs in
-	// formatting between the two, so assert on the ref rather than the exact
-	// serialisation.
-	// The filter reaches the file by one of two routes: the container patch
-	// (relative ref, `A1:C20`) on a purely streamed save, or excelize's model
-	// writer (absolute, `$A$1:$C$20`) once a style forces a degrade. Both are
-	// valid, so assert the element rather than one serialisation.
+	// The filter arrives either from the container patch (relative ref) or,
+	// once a style forces a degrade, from excelize's model writer (absolute).
 	assertSheetXMLContains(t, path, `autoFilter`)
 	f := reopen(t, path)
 	if displayed, _ := f.GetCellValue("Worksheet", "D21"); displayed != "210" {
@@ -153,4 +152,17 @@ func TestFormulaTypePatchComposesWithAutoFilter(t *testing.T) {
 	if v, _ := f.GetCellValue("Worksheet", "B20"); v != "20" {
 		t.Errorf("data damaged by double patch: B20 = %q", v)
 	}
+}
+
+func contains(haystack, needle string) bool {
+	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
+}
+
+func indexOf(h, n string) int {
+	for i := 0; i+len(n) <= len(h); i++ {
+		if h[i:i+len(n)] == n {
+			return i
+		}
+	}
+	return -1
 }

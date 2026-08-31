@@ -3,11 +3,13 @@ package core
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"io"
 	"regexp"
+	"strings"
 )
 
-// Numeric formula results must not be typed "str" (review blocker 1).
+// Numeric formula results must not be typed "str".
 //
 // excelize's SetCellFormula ends with an unconditional `c.T, c.IS = "str", nil`
 // and exposes no way to reset it: every public value setter calls
@@ -17,53 +19,56 @@ import (
 //	<c r="C1" s="1" t="str"><f>SUM(A1:B1)</f><v>2500</v></c>
 //
 // In OOXML `t="str"` means "formula returning a string"; the numeric type is
-// `n`, which is the default and written by omitting the attribute. The
-// consequence is not cosmetic: a reader that trusts the cached value skips
-// number formatting for string cells, so a #,##0 total renders 2500 rather
-// than 2,500 — and excelize's own reader takes the `case "str": return c.V`
-// path that bypasses formattedValue entirely.
+// `n`, the default, written by omitting the attribute. The consequence is not
+// cosmetic: excelize's own reader takes a `case "str": return c.V` path that
+// bypasses formattedValue, so a #,##0 total renders 2500 rather than 2,500 for
+// any consumer that trusts the cache.
 //
-// Rather than reach into excelize's internals, the saved container is patched
-// the same way streaming auto-filters already are (filterpatch.go): entries
-// are raw-copied except the worksheet parts, where the attribute is dropped
-// from formula cells whose cached value is numeric. Cells whose result is a
-// genuine string keep t="str" — the regexp only matches a <v> body that parses
-// as an OOXML number.
+// The saved container is patched the same way streaming auto-filters are
+// (filterpatch.go). Crucially the patch is driven by the *exact cell
+// references* cacheFormulaResults() wrote, never by scanning for
+// numeric-looking values: a genuine string result can look numeric —
+// `TEXT(A1,"0000")` caches "0042" — and retyping it would silently turn it
+// into 42. Only cells this engine cached in this save are touched, so formulas
+// already present in a loaded workbook are left exactly as they were.
 
-// A formula cell carrying t="str" whose <v> is numeric. Deliberately narrow:
-// it must be a <c> element with both an <f> and a <v>, and the value must look
-// like a number (optionally signed, decimal or scientific). Anything else —
-// a real string result, an error, a cell without a cached value — is left
-// alone.
-var reNumericStrFormula = regexp.MustCompile(
-	`(<c\b[^>]*?)\s+t="str"((?:[^>]*)><f\b[^>]*>[^<]*</f><v>-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?</v></c>)`)
+// cellRefAttr extracts the r="…" reference from a <c …> start tag.
+var cellRefAttr = regexp.MustCompile(`\sr="([A-Z]+[0-9]+)"`)
 
-// needsFormulaTypePatch reports whether the sheet XML carries any cell the
-// patch would rewrite, so a workbook without cached formulas skips the pass.
-func needsFormulaTypePatch(b []byte) bool {
-	return reNumericStrFormula.Match(b)
-}
+// dropStrType removes the t="str" attribute from a single <c …> start tag.
+var dropStrType = regexp.MustCompile(`\s+t="str"`)
 
 // patchNumericFormulaTypes rewrites the saved container, dropping t="str" from
-// formula cells whose cached result is numeric.
-func patchNumericFormulaTypes(src io.ReaderAt, size int64, dst io.Writer) error {
+// exactly the cells listed in cached (sheet part path → set of cell refs).
+// Worksheet parts with nothing to change are copied compressed-as-is, so a
+// workbook with one cached total does not pay a full recompress of every sheet.
+func patchNumericFormulaTypes(src io.ReaderAt, size int64, dst io.Writer, cached map[string]map[string]bool) error {
 	zr, err := zip.NewReader(src, size)
 	if err != nil {
 		return err
 	}
+	parts, err := sheetPartPaths(zr)
+	if err != nil {
+		return err
+	}
+	// Re-key by part path: cached is keyed by sheet name.
+	byPart := make(map[string]map[string]bool, len(cached))
+	for sheet, cells := range cached {
+		if len(cells) == 0 {
+			continue
+		}
+		part, ok := parts[sheet]
+		if !ok {
+			return fmt.Errorf("easy-excel: no worksheet part for sheet %q", sheet)
+		}
+		byPart[part] = cells
+	}
+
 	zw := zip.NewWriter(dst)
 	for _, f := range zr.File {
-		if !isWorksheetPart(f.Name) {
-			raw, err := f.OpenRaw()
-			if err != nil {
-				return err
-			}
-			hdr := f.FileHeader
-			w, err := zw.CreateRaw(&hdr)
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(w, raw); err != nil {
+		cells, patch := byPart[f.Name]
+		if !patch {
+			if err := copyRaw(zw, f); err != nil {
 				return err
 			}
 			continue
@@ -77,20 +82,67 @@ func patchNumericFormulaTypes(src io.ReaderAt, size int64, dst io.Writer) error 
 		if err != nil {
 			return err
 		}
-		b = reNumericStrFormula.ReplaceAll(b, []byte("$1$2"))
 		w, err := zw.Create(f.Name)
 		if err != nil {
 			return err
 		}
-		if _, err := io.Copy(w, bytes.NewReader(b)); err != nil {
+		if _, err := w.Write(retypeCells(b, cells)); err != nil {
 			return err
 		}
 	}
 	return zw.Close()
 }
 
+// copyRaw copies a zip entry without recompressing it.
+func copyRaw(zw *zip.Writer, f *zip.File) error {
+	raw, err := f.OpenRaw()
+	if err != nil {
+		return err
+	}
+	hdr := f.FileHeader
+	w, err := zw.CreateRaw(&hdr)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, raw)
+	return err
+}
+
+// retypeCells drops t="str" from the <c> start tags whose r="…" is in cells.
+//
+// Walks the start tags rather than matching whole elements: a cell's body may
+// contain anything (shared formulas are self-closing, inline strings nest
+// elements), and the reference is all that decides whether to rewrite.
+func retypeCells(b []byte, cells map[string]bool) []byte {
+	var out bytes.Buffer
+	out.Grow(len(b))
+	rest := b
+	for {
+		i := bytes.Index(rest, []byte("<c "))
+		if i < 0 {
+			out.Write(rest)
+			return out.Bytes()
+		}
+		j := bytes.IndexByte(rest[i:], '>')
+		if j < 0 { // malformed; emit the remainder untouched
+			out.Write(rest)
+			return out.Bytes()
+		}
+		tagEnd := i + j + 1
+		out.Write(rest[:i])
+		tag := rest[i:tagEnd]
+		if m := cellRefAttr.FindSubmatch(tag); m != nil && cells[string(m[1])] {
+			tag = dropStrType.ReplaceAll(tag, nil)
+		}
+		out.Write(tag)
+		rest = rest[tagEnd:]
+	}
+}
+
+// isWorksheetPart reports whether a zip entry is a worksheet XML part (and not
+// its _rels sibling, which also lives under xl/worksheets/).
 func isWorksheetPart(name string) bool {
-	return len(name) > len("xl/worksheets/") &&
-		name[:len("xl/worksheets/")] == "xl/worksheets/" &&
-		bytes.HasSuffix([]byte(name), []byte(".xml"))
+	return strings.HasPrefix(name, "xl/worksheets/") &&
+		strings.HasSuffix(name, ".xml") &&
+		!strings.Contains(name, "/_rels/")
 }
