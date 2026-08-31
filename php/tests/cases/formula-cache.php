@@ -14,14 +14,28 @@ function fcSentFlag(): ?bool
 }
 
 return [
-    'formula cache: the writer defaults to pre-calculating, like PhpSpreadsheet' => function (): void {
+    'formula cache: the accessor keeps PhpSpreadsheet\'s default...' => function (): void {
         EasyExcelFake::reset();
-        $s = new Spreadsheet();
-        $w = new Xlsx($s);
-        T::same(true, $w->getPreCalculateFormulas(), 'PhpSpreadsheet default');
+        $w = new Xlsx(new Spreadsheet());
+        T::same(true, $w->getPreCalculateFormulas(), 'API parity with upstream');
+    },
 
+    'formula cache: ...but the pass is NOT enabled without an explicit opt-in' => function (): void {
+        // Acting on the inherited default would read every formula back and
+        // force a streamed workbook into the full in-memory model — an OOM
+        // risk on million-row exports. Streaming is not traded away silently.
+        EasyExcelFake::reset();
+        $w = new Xlsx(new Spreadsheet());
         $w->save(\tempnam(\sys_get_temp_dir(), 'fc') . '.xlsx');
-        T::same(true, fcSentFlag(), 'the default reaches the extension');
+        T::same(false, fcSentFlag(), 'untouched writer must not precalculate');
+    },
+
+    'formula cache: an explicit setPreCalculateFormulas(true) enables it' => function (): void {
+        EasyExcelFake::reset();
+        $w = new Xlsx(new Spreadsheet());
+        $w->setPreCalculateFormulas(true);
+        $w->save(\tempnam(\sys_get_temp_dir(), 'fc') . '.xlsx');
+        T::same(true, fcSentFlag(), 'opting in is honoured');
     },
 
     'formula cache: setPreCalculateFormulas(false) reaches the extension' => function (): void {
@@ -70,8 +84,9 @@ return [
         $w = new Xlsx($s);
         $path = \tempnam(\sys_get_temp_dir(), 'fc') . '.xlsx';
 
+        $w->setPreCalculateFormulas(true);
         $w->save($path);
-        T::same(true, fcSentFlag(), 'first save: on');
+        T::same(true, fcSentFlag(), 'first save: opted in');
 
         $w->setPreCalculateFormulas(false);
         $w->save($path);

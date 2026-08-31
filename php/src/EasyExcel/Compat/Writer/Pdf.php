@@ -179,7 +179,7 @@ abstract class Pdf extends Html
     {
         $size = $this->paperSize ?? $this->activeSheetPageSetup()->getPaperSize();
 
-        return self::$paperSizes[$size] ?? 'LETTER';
+        return static::$paperSizes[$size] ?? 'LETTER';
     }
 
     /**

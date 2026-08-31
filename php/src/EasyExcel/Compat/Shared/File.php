@@ -11,17 +11,22 @@ namespace EasyExcel\Compat\Shared;
  */
 final class File
 {
-    private static ?string $useUploadTempDirectory = null;
+    private static bool $useUploadTempDirectory = false;
 
     /** Route temp files through PHP's upload_tmp_dir instead of the system dir. */
+    /**
+     * Store the flag, not the resolved path: upload_tmp_dir is commonly empty,
+     * and caching its value here made the setter silently a no-op on those
+     * configurations. The directory is resolved at use time, as upstream does.
+     */
     public static function setUseUploadTempDirectory(bool $useUploadTempDir): void
     {
-        self::$useUploadTempDirectory = $useUploadTempDir ? (\ini_get('upload_tmp_dir') ?: null) : null;
+        self::$useUploadTempDirectory = $useUploadTempDir;
     }
 
     public static function getUseUploadTempDirectory(): bool
     {
-        return self::$useUploadTempDirectory !== null;
+        return self::$useUploadTempDirectory;
     }
 
     /**
@@ -33,9 +38,8 @@ final class File
      */
     public static function sysGetTempDir(): string
     {
-        $dir = self::$useUploadTempDirectory !== null && \is_dir(self::$useUploadTempDirectory)
-            ? self::$useUploadTempDirectory
-            : \sys_get_temp_dir();
+        $upload = self::$useUploadTempDirectory ? (\ini_get('upload_tmp_dir') ?: '') : '';
+        $dir = ($upload !== '' && \is_dir($upload)) ? $upload : \sys_get_temp_dir();
 
         return \realpath($dir) ?: $dir;
     }
@@ -66,6 +70,6 @@ final class File
     /** @internal test seam */
     public static function reset(): void
     {
-        self::$useUploadTempDirectory = null;
+        self::$useUploadTempDirectory = false;
     }
 }

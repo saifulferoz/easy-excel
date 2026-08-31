@@ -452,6 +452,13 @@ class Worksheet
     private array $columnDimensions = [];
 
     /** @var array<int, RowDimension> */
+    /**
+     * Cap on retained RowDimension objects; see getRowDimension(). Chosen to
+     * cover realistic "style the first N rows" patterns without letting a
+     * per-row loop over a large export grow without bound.
+     */
+    private const ROW_DIMENSION_CACHE_LIMIT = 4096;
+
     private array $rowDimensions = [];
 
     /**
@@ -462,6 +469,12 @@ class Worksheet
      */
     public function getColumnDimension(string $column): ColumnDimension
     {
+        // Normalised: column refs are case-insensitive in Excel, so 'a' and
+        // 'A' must share one dimension. Keying on the raw string let two
+        // callers set different widths on the same column, last save winning
+        // (review item 5).
+        $column = \strtoupper($column);
+
         return $this->columnDimensions[$column] ??= new ColumnDimension($this, $column);
     }
 
@@ -470,9 +483,24 @@ class Worksheet
         return $this->getColumnDimension(Coordinate::stringFromColumnIndex($columnIndex));
     }
 
+    /**
+     * Row dimensions are cached like column dimensions, but rows are unbounded
+     * where columns are not: a per-row getRowDimension()->setRowHeight() loop
+     * over a 500k-row export would retain 500k objects for the sheet's
+     * lifetime. The cache is capped; past the cap a fresh instance is handed
+     * out, which still writes through correctly and only loses read-back of a
+     * height set earlier in the same session (review item 5).
+     */
     public function getRowDimension(int $row): RowDimension
     {
-        return $this->rowDimensions[$row] ??= new RowDimension($this, $row);
+        if (isset($this->rowDimensions[$row])) {
+            return $this->rowDimensions[$row];
+        }
+        if (\count($this->rowDimensions) >= self::ROW_DIMENSION_CACHE_LIMIT) {
+            return new RowDimension($this, $row);
+        }
+
+        return $this->rowDimensions[$row] = new RowDimension($this, $row);
     }
 
     private ?RowDimension $defaultRowDimension = null;

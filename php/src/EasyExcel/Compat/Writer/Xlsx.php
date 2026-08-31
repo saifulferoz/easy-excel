@@ -42,12 +42,12 @@ class Xlsx extends BaseWriter
         $this->spreadsheet->flushAll();
         $handle = $this->spreadsheet->getHandle();
 
-        // PhpSpreadsheet pre-calculates by default and stores each result
-        // beside its formula. Honour the same flag here: without it, readers
-        // that trust the cached value (rather than recalculating) render
-        // formula cells blank. Costs a full formula pass at save, so a caller
-        // that does not need it turns the flag off (COMPAT.md divergence 24).
-        Native::setPrecalculateFormulas($handle, $this->getPreCalculateFormulas());
+        // Opt-in only. PhpSpreadsheet pre-calculates by default, but doing so
+        // here reads every formula back and forces a streamed workbook into
+        // the full in-memory model — an OOM risk on million-row exports. The
+        // getter still reports upstream's default; only an explicit
+        // setPreCalculateFormulas() call enables the pass (COMPAT.md §24).
+        Native::setPrecalculateFormulas($handle, $this->shouldPreCalculateFormulas());
 
         if (\is_string($filename) && !StreamPath::isWrapped($filename)) {
             Native::saveXlsx($handle, $filename, $this->password);

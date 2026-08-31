@@ -23,9 +23,7 @@ final class Settings
 {
     private static ?string $chartRenderer = null;
 
-    private static ?string $libXmlLoaderOptions = null;
-
-    private static bool $libXmlDisableEntityLoader = true;
+    private static string $locale = 'en';
 
     private static mixed $cache = null;
 
@@ -52,24 +50,29 @@ final class Settings
         self::$chartRenderer = null;
     }
 
-    public static function setLibXmlLoaderOptions(?string $options): void
+    /**
+     * Locale for formula translation and formatting.
+     *
+     * State-only: calculation is delegated to excelize, which has no locale
+     * layer, so the value round-trips but does not change output. Returns true
+     * for parity with upstream's success/failure contract.
+     */
+    public static function setLocale(string $locale): bool
     {
-        self::$libXmlLoaderOptions = $options;
+        self::$locale = $locale;
+
+        return true;
     }
 
-    public static function getLibXmlLoaderOptions(): ?string
+    public static function getLocale(): string
     {
-        return self::$libXmlLoaderOptions;
+        return self::$locale;
     }
 
-    public static function setLibXmlDisableEntityLoader(bool $disable): void
+    /** Matches upstream: the flag set used when escaping HTML output. */
+    public static function htmlEntityFlags(): int
     {
-        self::$libXmlDisableEntityLoader = $disable;
-    }
-
-    public static function getLibXmlDisableEntityLoader(): bool
-    {
-        return self::$libXmlDisableEntityLoader;
+        return \ENT_COMPAT;
     }
 
     /** Accepted no-op: the extension owns its own caching (COMPAT.md). */
@@ -109,8 +112,7 @@ final class Settings
     public static function reset(): void
     {
         self::$chartRenderer = null;
-        self::$libXmlLoaderOptions = null;
-        self::$libXmlDisableEntityLoader = true;
+        self::$locale = 'en';
         self::$cache = null;
         self::$httpClient = null;
         self::$requestFactory = null;

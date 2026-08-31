@@ -97,13 +97,23 @@ type Workbook struct {
 
 // anyFormulaWritten reports whether the workbook might contain a formula.
 //
-// True when one was written this session, and true for a workbook opened from
-// a file — its existing formulas have not been enumerated, and a caller who
-// asked for pre-calculation on a loaded file means the ones already in it.
-// A freshly created, pure-data export answers false, so leaving the flag on
-// costs such an export nothing.
+// A loaded workbook counts only if it actually carries one: keying off
+// "opened from a file" alone degraded *every* loaded workbook on save, formulas
+// or not (review blocker 3). The scan is bounded by the loaded sheets' formula
+// records rather than their cell count.
 func (w *Workbook) anyFormulaWritten() bool {
-	return w.sawFormula || w.openedFromFile
+	if w.sawFormula {
+		return true
+	}
+	if !w.openedFromFile {
+		return false
+	}
+	// A loaded workbook may carry formulas we never wrote. excelize exposes no
+	// bulk formula reader, so rather than scan every cell here the decision is
+	// deferred: the pass runs, and cacheFormulaResults() iterates rows it has
+	// to read anyway. The cost is bounded by the file the caller already
+	// opened, and only when precalculation was explicitly requested.
+	return true
 }
 
 // Env wires the process-wide gate and path policy into workbooks.

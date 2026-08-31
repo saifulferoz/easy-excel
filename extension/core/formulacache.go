@@ -23,11 +23,20 @@ import (
 //     and nothing at write time. Does nothing for a reader that never
 //     calculates.
 //   - PrecalculateFormulas (expensive, default OFF): evaluates every formula
-//     cell and writes the result into the cache, matching PhpSpreadsheet.
-//     This is what a non-calculating reader needs. It is O(formula cells),
-//     forces random-access mode, and so forfeits streaming — hence opt-in.
+//     cell and writes the result into the cache, so a non-calculating reader
+//     shows a value instead of a blank. It is O(formula cells), forces
+//     random-access mode, and so forfeits streaming — hence opt-in, and never
+//     enabled by inheriting PhpSpreadsheet's default.
 //
-// Scope limit: only **numeric** results are cached. See cacheFormulaResults.
+// Two limitations, both inherent to excelize and both verified rather than
+// assumed (see cacheFormulaResults):
+//
+//   - only numeric results can be cached at all;
+//   - a cached cell is emitted as `t="str"`, so its number format does not
+//     apply when a non-calculating reader renders it.
+//
+// The second is why this is not a drop-in match for PhpSpreadsheet's
+// pre-calculation, and why fullCalcOnLoad remains the default mitigation.
 
 // SetFullCalcOnLoad toggles the workbook's fullCalcOnLoad flag.
 func (w *Workbook) SetFullCalcOnLoad(on bool) error {
@@ -52,25 +61,36 @@ func (w *Workbook) SetPrecalculateFormulas(on bool) error {
 }
 
 // applyCalcProps writes the fullCalcOnLoad flag. Called from the save path.
+//
+// Writes the flag in both directions: returning early when false left a
+// workbook loaded from a file that already carried fullCalcOnLoad="true"
+// unable to clear it (review item 10).
 func (w *Workbook) applyCalcProps() error {
-	if !w.fullCalcOnLoad {
-		return nil
-	}
-	on := true
+	on := w.fullCalcOnLoad
 	return w.f.SetCalcProps(&excelize.CalcPropsOptions{FullCalcOnLoad: &on})
 }
 
 // cacheFormulaResults evaluates every formula cell and stores the result
 // beside the formula, so readers that do not calculate still show a value.
 //
-// **Numeric results only.** excelize has no way to write a cached string or
-// boolean result correctly: SetCellStr/SetCellValue(string) store a
-// shared-string *index* in <v>, and the subsequent SetCellFormula rewrites the
-// type attribute to "str" while leaving that index in place — the cell then
-// reads back as "0" or "1" instead of its text. Caching a wrong value is worse
-// than caching none, so text and boolean results are left uncached and keep
-// today's recompute-on-open behaviour. Errors (#DIV/0! and friends) are
-// skipped for the same reason.
+// **Numeric results only, and typed as text.** Two separate excelize limits:
+//
+//  1. A string or boolean result cannot be cached correctly at all:
+//     SetCellStr/SetCellValue(string) store a shared-string *index* in <v>,
+//     and the following SetCellFormula relabels the cell "str" while leaving
+//     that index — the cell reads back as "0"/"1" instead of its text. Those
+//     results, and errors (#DIV/0! and friends), are left uncached.
+//
+//  2. SetCellFormula ends with an unconditional `c.T, c.IS = "str", nil`
+//     (excelize cell.go), and there is no public API to reset the type
+//     afterwards. Writing the value *after* the formula clears the formula
+//     instead. So even a cached numeric result is emitted as
+//     `<c t="str"><f>…</f><v>2500</v></c>`: readable as a value, but its
+//     number format will not be applied by a reader that does not recalculate
+//     (a #,##0 total renders "2500", not "2,500").
+//
+// Point 2 is a real fidelity loss, not a cosmetic one, which is why
+// pre-calculation stays opt-in and fullCalcOnLoad is the default mitigation.
 //
 // The caller must hold w.mu and have already flushed streams: the formulas
 // have to exist in the model before they can be read back and evaluated.
@@ -91,7 +111,11 @@ func (w *Workbook) cacheFormulaResults() (int, error) {
 				if err != nil || formula == "" {
 					continue
 				}
-				value, err := w.f.CalcCellValue(name, cell)
+				// RawCellValue: without it excelize returns the *formatted*
+				// value, so a #,##0 total comes back "2,500", fails ParseFloat
+				// and is silently skipped — precisely the report cell this
+				// cache exists for (review blocker 2).
+				value, err := w.f.CalcCellValue(name, cell, excelize.Options{RawCellValue: true})
 				if err != nil {
 					// An unsupported function or a genuine #VALUE!: leave the
 					// cell to be recomputed on open rather than baking in a

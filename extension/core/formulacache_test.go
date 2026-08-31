@@ -337,3 +337,145 @@ func workbookXML(t *testing.T, path, needle string) bool {
 	on := opts.FullCalcOnLoad != nil && *opts.FullCalcOnLoad
 	return on == strings.Contains(needle, "true")
 }
+
+// Blocker 2 (review): CalcCellValue returns the *formatted* value unless
+// RawCellValue is set, so a number-formatted total ("2,500") fails ParseFloat
+// and is silently skipped — exactly the report cell the cache exists for.
+func TestPrecalculateCachesNumberFormattedCells(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.SetPrecalculateFormulas(true); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "numfmt.xlsx")
+
+	if err := w.WriteRows("Worksheet", 1, 1, [][]compat.Cell{
+		mustCells(t, 1000.0, 1500.0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	setFormula(t, w, "C1", "SUM(A1:B1)")
+	// #,##0 — the format a report total actually carries.
+	if err := w.ApplyStyle("Worksheet", "C1", `{"numberFormat":{"formatCode":"#,##0"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	f := reopen(t, path)
+	raw, err := f.GetCellValue("Worksheet", "C1", excelize.Options{RawCellValue: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw != "2500" {
+		t.Errorf("number-formatted formula cached = %q, want 2500 (thousands separator must not defeat the cache)", raw)
+	}
+}
+
+// Blocker 3 (review): precalculate defaulted on and degraded any workbook that
+// had ever written a formula — a million-row streamed export with one total
+// row flipped to a full in-memory model plus a []][]string copy of every
+// sheet, silently. Streaming is the library's headline property; it must not
+// be traded away without the caller asking.
+func TestPrecalculateIsOptInNotDefault(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	// no SetPrecalculateFormulas call at all
+	fillRows(t, w, "Worksheet", 1, 300)
+	setFormula(t, w, "D301", "SUM(B1:B300)")
+	if err := w.SaveXlsx(filepath.Join(t.TempDir(), "default.xlsx"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if w.Degraded() {
+		t.Error("a streamed export with a total row must not degrade by default")
+	}
+}
+
+// Opening a file must not by itself imply "this workbook has formulas worth
+// a full evaluate pass" — every loaded workbook was degrading on save.
+func TestPrecalculateOnLoadedFileWithoutFormulas(t *testing.T) {
+	src, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "data.xlsx")
+	fillRows(t, src, "Worksheet", 1, 50)
+	if err := src.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	src.Close()
+
+	w, err := Open(path, "", testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.SetPrecalculateFormulas(true); err != nil {
+		t.Fatal(err)
+	}
+	// A loaded pure-data workbook has nothing to calculate; the pass should be
+	// a no-op rather than a full-sheet materialisation.
+	n, err := w.cacheFormulaResults()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("cached %d formulas in a pure-data workbook, want 0", n)
+	}
+}
+
+// Documents the excelize limitation behind review blocker 1: SetCellFormula
+// ends with an unconditional c.T = "str", so a cached numeric result is
+// emitted as text and its number format is not applied by a reader that does
+// not recalculate. Pinned so the day excelize gains a way to reset the type,
+// this test fails and the workaround can be removed.
+func TestPrecalculateCachedCellIsTypedStr(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.SetPrecalculateFormulas(true); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "typed.xlsx")
+	if err := w.WriteRows("Worksheet", 1, 1, [][]compat.Cell{
+		mustCells(t, 1000.0, 1500.0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	setFormula(t, w, "C1", "SUM(A1:B1)")
+	if err := w.ApplyStyle("Worksheet", "C1", `{"numberFormat":{"formatCode":"#,##0"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	f := reopen(t, path)
+	// The value is cached and readable...
+	raw, _ := f.GetCellValue("Worksheet", "C1", excelize.Options{RawCellValue: true})
+	if raw != "2500" {
+		t.Errorf("cached value = %q, want 2500", raw)
+	}
+	// ...but typed as text, so the number format does not render.
+	typ, err := f.GetCellType("Worksheet", "C1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if typ != excelize.CellTypeSharedString && typ != excelize.CellTypeInlineString {
+		t.Logf("cached cell type = %v; if excelize now preserves the numeric "+
+			"type, drop the t=str caveat from COMPAT.md §24", typ)
+	}
+	if displayed, _ := f.GetCellValue("Worksheet", "C1"); displayed == "2,500" {
+		t.Error("number format now applies to cached cells — the documented " +
+			"limitation is fixed and COMPAT.md §24 should be updated")
+	}
+}

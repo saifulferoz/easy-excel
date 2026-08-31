@@ -140,15 +140,14 @@ return [
         T::same('Totally\\Made\\Up\\Renderer', Settings::getChartRenderer(), 'no validation, no throw');
     },
 
-    'wave52: libxml and cache accessors round-trip' => function (): void {
+    'wave52: locale and cache accessors round-trip' => function (): void {
         Settings::reset();
-        T::same(true, Settings::getLibXmlDisableEntityLoader(), 'secure default');
-        Settings::setLibXmlDisableEntityLoader(false);
-        T::same(false, Settings::getLibXmlDisableEntityLoader());
-
-        T::same(null, Settings::getLibXmlLoaderOptions());
-        Settings::setLibXmlLoaderOptions('NOENT');
-        T::same('NOENT', Settings::getLibXmlLoaderOptions());
+        // Upstream's real surface — an earlier revision invented libxml
+        // accessors that PhpSpreadsheet does not have.
+        T::same('en', Settings::getLocale(), 'default locale');
+        T::same(true, Settings::setLocale('fr'), 'upstream returns success/failure');
+        T::same('fr', Settings::getLocale());
+        T::same(\ENT_COMPAT, Settings::htmlEntityFlags(), 'matches upstream');
 
         $cache = new \stdClass();
         Settings::setCache($cache);
@@ -169,11 +168,11 @@ return [
 
     'wave52: Settings::reset restores every default' => function (): void {
         Settings::setChartRenderer('X');
-        Settings::setLibXmlDisableEntityLoader(false);
+        Settings::setLocale('de');
         Settings::setCache(new \stdClass());
         Settings::reset();
         T::same(null, Settings::getChartRenderer());
-        T::same(true, Settings::getLibXmlDisableEntityLoader());
+        T::same('en', Settings::getLocale());
         T::same(null, Settings::getCache());
     },
 

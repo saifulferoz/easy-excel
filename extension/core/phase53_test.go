@@ -205,3 +205,56 @@ func TestBreakAndSelectionOnUnknownSheet(t *testing.T) {
 		t.Error("selection on a missing sheet must fail")
 	}
 }
+
+// Review item 4(b): the mirror of TestSetSelectionPreservesFreezePanes —
+// selection set *before* the freeze was discarded, because FreezePanes builds
+// a fresh Panes with a nil Selection.
+func TestFreezePanesPreservesSelection(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	path := filepath.Join(t.TempDir(), "select-then-freeze.xlsx")
+
+	fillRows(t, w, "Worksheet", 1, 10)
+	if err := w.SetSelection("Worksheet", "B5"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.FreezePanes("Worksheet", "A2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	assertSheetXMLContains(t, path, `ySplit="1"`)
+	assertSheetXMLContains(t, path, `activeCell="B5"`)
+}
+
+// Same ordering, but in random-access mode where FreezePanes calls SetPanes
+// directly rather than queueing.
+func TestFreezePanesPreservesSelectionRandomAccess(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	path := filepath.Join(t.TempDir(), "ra-select-then-freeze.xlsx")
+
+	fillRows(t, w, "Worksheet", 1, 10)
+	// force random access before the pane ops
+	if _, _, err := w.ReadRows("Worksheet", 1, 1, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SetSelection("Worksheet", "B5"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.FreezePanes("Worksheet", "A2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	assertSheetXMLContains(t, path, `ySplit="1"`)
+	assertSheetXMLContains(t, path, `activeCell="B5"`)
+}

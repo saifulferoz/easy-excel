@@ -511,10 +511,26 @@ class Html extends BaseWriter
             // clamps it at the end of the section, which would drop the
             // covered cells out of alignment. Extend the header section to
             // cover any merge that starts inside it.
-            foreach ($sheet->getMergeCells() as $mergeRange) {
-                [[, $mergeStartRow], [, $mergeEndRow]] = Coordinate::rangeBoundaries($mergeRange);
-                if ($mergeStartRow >= $repeatStart && $mergeStartRow <= $repeatEnd && $mergeEndRow > $repeatEnd) {
-                    $repeatEnd = $mergeEndRow;
+            //
+            // Iterated to a fixed point, not a single pass: extending the
+            // boundary can pull in a further merge that was previously outside
+            // it. With A3:A5 and A5:A7 and repeatEnd = 3, a single pass that
+            // happened to see A5:A7 first would skip it, then raise repeatEnd
+            // to 5 — leaving A5:A7 straddling the boundary, which is the case
+            // being fixed. Merge count is small and bounded, so re-scanning is
+            // cheap; the loop is also bounded by it (review item 7).
+            $merges = $sheet->getMergeCells();
+            for ($pass = \count($merges); $pass > 0; --$pass) {
+                $extended = false;
+                foreach ($merges as $mergeRange) {
+                    [[, $mergeStartRow], [, $mergeEndRow]] = Coordinate::rangeBoundaries($mergeRange);
+                    if ($mergeStartRow >= $repeatStart && $mergeStartRow <= $repeatEnd && $mergeEndRow > $repeatEnd) {
+                        $repeatEnd = $mergeEndRow;
+                        $extended = true;
+                    }
+                }
+                if (!$extended) {
+                    break;
                 }
             }
 

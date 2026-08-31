@@ -123,7 +123,7 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 
 | Area | API | Notes |
 |---|---|---|
-| Pre-calculated results | `Writer\Xlsx::setPreCalculateFormulas(bool)` (default `true`), `DISABLE_PRECALCULATE_FORMULAE` save flag | evaluates every formula at save and stores the result beside it, so readers that do not recalculate show values instead of blanks. **Numeric results only** — see divergence 24 for why text and boolean results cannot be cached correctly. Forfeits streaming, but only when the workbook contains a formula |
+| Pre-calculated results | `Writer\Xlsx::setPreCalculateFormulas(bool)`, `DISABLE_PRECALCULATE_FORMULAE` save flag | **opt-in**: the getter reports upstream's `true` default, but the pass runs only on an explicit call, so inheriting the default never costs streaming. Numeric results only, and cached cells are typed `t="str"` so their number format does not render — see divergence 24 |
 | Recalculate-on-open | `Native::setFullCalcOnLoad(int $handle, bool)` (easy-excel extra, default **on**) | sets `calcPr/@fullCalcOnLoad`; costs one attribute and never degrades. Fixes spreadsheet applications; does nothing for readers that never calculate, which is what the cache above is for |
 
 ## Documented divergences
@@ -217,27 +217,29 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     non-matching rows; Excel re-applies the filter on open. PhpSpreadsheet
     behaves the same. Column rules also accept at most two clauses joined by
     AND/OR (the OOXML custom-filter limit).
-24. **Formula cache is numeric-only** (was "no formula cache" before the
-    Phase-5 cross-cutting fix) — `Writer\Xlsx::setPreCalculateFormulas()` is
-    now wired through and defaults to `true`, matching PhpSpreadsheet: at save
-    every formula is evaluated and the result stored beside it, so readers
-    that trust the cached `<v>` (PDF/HTML pipelines, most headless parsers)
-    show values rather than blanks.
-    **Only numeric results are cached.** excelize offers no way to store a
-    text or boolean formula result correctly — `SetCellStr`/`SetCellValue`
-    write a shared-string *index* into `<v>`, and the formula write then
-    relabels the cell `t="str"` while leaving that index in place, so the cell
-    reads back as `0`/`1` instead of its text. Caching a wrong value is worse
-    than caching none, so text, boolean and error results are left to
-    recompute on open, exactly as before.
-    Pre-calculation costs a full formula pass and forces random-access mode,
-    so it forfeits streaming — but only for workbooks that actually contain a
-    formula; a pure-data export streams with the flag left on. Turn it off
-    with `setPreCalculateFormulas(false)` or the
-    `DISABLE_PRECALCULATE_FORMULAE` save flag.
-    Independently, the workbook's `calcPr/@fullCalcOnLoad` flag is set by
-    default (free, one attribute): spreadsheet **applications** recalculate on
-    open regardless. Disable via `Native::setFullCalcOnLoad($handle, false)`.
+24. **Formula cache: opt-in, numeric-only, and typed as text** —
+    `Writer\Xlsx::setPreCalculateFormulas(true)` evaluates every formula at
+    save and stores the result beside it, so readers that trust the cached
+    `<v>` show values rather than blanks.
+    **Opt-in, deliberately.** The getter still reports PhpSpreadsheet's `true`
+    default for API parity, but the pass only runs when
+    `setPreCalculateFormulas()` was called explicitly: acting on the inherited
+    default would read every formula back and force a streamed workbook into
+    the full in-memory model — an OOM risk on million-row exports, and a
+    silent trade of the property this engine exists for.
+    **Numeric results only.** A text or boolean result cannot be cached
+    correctly — excelize writes a shared-string *index* into `<v>`, which reads
+    back as `0`/`1`. Those, and error results, recompute on open.
+    **Cached cells are emitted `t="str"`.** `SetCellFormula` ends with an
+    unconditional `c.T = "str"` and excelize exposes no way to reset it
+    (writing the value last clears the formula instead). A cached numeric
+    result is therefore readable as a value but its **number format does not
+    apply** to a reader that does not recalculate: a `#,##0` total renders
+    `2500`, not `2,500`. This is a real fidelity loss, which is why the pass is
+    opt-in and `fullCalcOnLoad` is the default mitigation.
+    Independently, `calcPr/@fullCalcOnLoad` is set by default (free, one
+    attribute): spreadsheet **applications** recalculate on open regardless.
+    Disable via `Native::setFullCalcOnLoad($handle, false)`.
 25. **Image anchoring** — drawings use one-cell anchoring (fixed size, the
     image keeps its dimensions when rows/columns resize), matching
     PhpSpreadsheet. excelize's default two-cell anchoring (image stretches
