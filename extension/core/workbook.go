@@ -957,7 +957,7 @@ func (w *Workbook) SaveXlsx(path, password string) error {
 	if err != nil {
 		return err
 	}
-	if err := w.writeXlsxTo(out); err != nil {
+	if err := w.writeXlsxTo(out, filepath.Dir(abs)); err != nil {
 		out.Close()
 		os.Remove(staged)
 		return err
@@ -1006,7 +1006,7 @@ func (w *Workbook) WriteXlsxTo(out io.Writer) error {
 	if err := w.settleForSave(true); err != nil {
 		return err
 	}
-	return w.writeXlsxTo(out)
+	return w.writeXlsxTo(out, "")
 }
 
 // writeXlsxTo serialises the workbook and runs each container pass in turn.
@@ -1015,7 +1015,13 @@ func (w *Workbook) WriteXlsxTo(out io.Writer) error {
 // streamed export is exactly the case these patches exist for, and buffering
 // the container in memory would give back the constant-memory property the
 // StreamWriter provides.
-func (w *Workbook) writeXlsxTo(out io.Writer) error {
+//
+// tmpDir is where those stages live. SaveXlsx passes the destination's own
+// directory so a multi-GB export is not staged on a small /tmp tmpfs while the
+// target sits on a large volume; "" (the system temp dir) is right for
+// WriteXlsxTo, which writes to a caller-owned stream and has no destination
+// path to stage beside.
+func (w *Workbook) writeXlsxTo(out io.Writer, tmpDir string) error {
 	passes := w.containerPasses()
 	if len(passes) == 0 {
 		return w.f.Write(out)
@@ -1034,7 +1040,7 @@ func (w *Workbook) writeXlsxTo(out io.Writer) error {
 		}
 	}()
 	newStage := func() (*os.File, error) {
-		f, err := os.CreateTemp("", "easyexcel-*.xlsx")
+		f, err := os.CreateTemp(tmpDir, "easyexcel-*.xlsx")
 		if err != nil {
 			return nil, err
 		}

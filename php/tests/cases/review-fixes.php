@@ -73,6 +73,20 @@ return [
         T::same('0042', $ws->getCell('A1')->getCalculatedValue(), 'string preserved');
     },
 
+    'calc: the string/number split matches upstream PhpSpreadsheet' => function (): void {
+        // Verified against phpoffice/phpspreadsheet 5.8: TEXT(A1,"0000")
+        // returns the string '0042' and ="1.50" the string '1.50', with
+        // floats only for genuine numeric results. Casting every is_numeric()
+        // string moved *away* from upstream, not toward it.
+        EasyExcelFake::reset();
+        $ws = (new Spreadsheet())->getActiveSheet();
+        foreach (['0042', '1.50', ' 3', '1e3'] as $i => $raw) {
+            $cell = 'A' . ($i + 1);
+            EasyExcelFake::$calculated[$cell] = $raw;
+            T::same($raw, $ws->getCell($cell)->getCalculatedValue(), "$raw stays a string");
+        }
+    },
+
     'calc: a genuine numeric result is still cast to a number' => function (): void {
         EasyExcelFake::reset();
         $s = new Spreadsheet();

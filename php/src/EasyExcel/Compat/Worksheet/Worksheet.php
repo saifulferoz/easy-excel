@@ -459,7 +459,6 @@ class Worksheet
     private const ROW_DIMENSION_CACHE_LIMIT = 4096;
 
     /** @var array<int, RowDimension> */
-
     private array $rowDimensions = [];
 
     /**

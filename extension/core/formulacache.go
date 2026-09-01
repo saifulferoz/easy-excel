@@ -146,7 +146,9 @@ func (w *Workbook) cacheFormulaResults() (int, error) {
 				if err != nil {
 					continue // non-numeric — see the docblock
 				}
-				if strconv.FormatFloat(number, 'G', -1, 64) != canonicalNumber(value) {
+				canon := canonicalNumber(value)
+				if strconv.FormatFloat(number, 'f', -1, 64) != canon &&
+					strconv.FormatFloat(number, 'G', -1, 64) != canon {
 					continue // string result that merely looks numeric
 				}
 				// Order matters: the value write clears the formula, so the

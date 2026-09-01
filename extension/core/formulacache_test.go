@@ -509,3 +509,81 @@ func TestPrecalculateLeavesTextFormulasTyped(t *testing.T) {
 		t.Errorf("numeric cached = %q, want 10", raw)
 	}
 }
+
+// Numbers >= 1e6 and <= 1e-4 where 'f' and 'G' format representations diverge
+// must still be cached properly.
+func TestPrecalculateCachesLargeAndSmallNumbers(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.SetPrecalculateFormulas(true); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "largesmall.xlsx")
+	if err := w.WriteRows("Worksheet", 1, 1, [][]compat.Cell{
+		mustCells(t, 1000000.0, 1500000.0, 0.000005, 0.000005),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	setFormula(t, w, "E1", "SUM(A1:B1)") // 2500000
+	setFormula(t, w, "F1", "SUM(C1:D1)") // 0.00001
+	if err := w.ApplyStyle("Worksheet", "E1", `{"numberFormat":{"formatCode":"#,##0"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	f := reopen(t, path)
+	if raw, _ := f.GetCellValue("Worksheet", "E1", excelize.Options{RawCellValue: true}); raw != "2500000" {
+		t.Errorf("large number formula cached = %q, want 2500000", raw)
+	}
+	if displayed, _ := f.GetCellValue("Worksheet", "E1"); displayed != "2,500,000" {
+		t.Errorf("displayed large number = %q, want \"2,500,000\"", displayed)
+	}
+	if raw, _ := f.GetCellValue("Worksheet", "F1", excelize.Options{RawCellValue: true}); raw != "0.00001" {
+		t.Errorf("small number formula cached = %q, want 0.00001", raw)
+	}
+}
+
+// A million-plus total is exactly the report cell this cache exists for.
+func TestPrecalculateCachesLargeTotals(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		a, b, want float64
+	}{
+		{"below 1e6", 1000, 1500, 2500},
+		{"at 1e6", 400000, 600000, 1000000},
+		{"millions", 1500000, 1000000, 2500000},
+		{"billions", 600000000, 400000000, 1000000000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, err := New(testEnv())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.Close()
+			if err := w.SetPrecalculateFormulas(true); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "big.xlsx")
+			if err := w.WriteRows("Worksheet", 1, 1, [][]compat.Cell{
+				mustCells(t, tc.a, tc.b),
+			}); err != nil {
+				t.Fatal(err)
+			}
+			setFormula(t, w, "C1", "SUM(A1:B1)")
+			if err := w.SaveXlsx(path, ""); err != nil {
+				t.Fatal(err)
+			}
+
+			f := reopen(t, path)
+			raw, _ := f.GetCellValue("Worksheet", "C1", excelize.Options{RawCellValue: true})
+			if raw == "" {
+				t.Errorf("total %v was NOT cached — the guard rejected a genuine number", tc.want)
+			}
+		})
+	}
+}

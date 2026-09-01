@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,23 +66,7 @@ func TestRetypeCellsToleratesMalformedTag(t *testing.T) {
 	}
 }
 
-func TestIsWorksheetPart(t *testing.T) {
-	for _, ok := range []string{"xl/worksheets/sheet1.xml", "xl/worksheets/sheet12.xml"} {
-		if !isWorksheetPart(ok) {
-			t.Errorf("%s should be a worksheet part", ok)
-		}
-	}
-	for _, no := range []string{
-		"xl/workbook.xml",
-		"xl/worksheets/_rels/sheet1.xml.rels",
-		"xl/styles.xml",
-		"xl/worksheets/",
-	} {
-		if isWorksheetPart(no) {
-			t.Errorf("%s should not be treated as a worksheet part", no)
-		}
-	}
-}
+
 
 // End-to-end: a string result that looks numeric must survive a save that also
 // caches a real numeric total.
@@ -191,7 +176,8 @@ func TestWriteXlsxToLeavesNoTempFiles(t *testing.T) {
 	if err := w.AutoFilter("Worksheet", "A1:C20"); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SaveXlsx(filepath.Join(t.TempDir(), "x.xlsx"), ""); err != nil {
+	var buf bytes.Buffer
+	if err := w.WriteXlsxTo(&buf); err != nil {
 		t.Fatal(err)
 	}
 	if after := countStages(t); after != before {

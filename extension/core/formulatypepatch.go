@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"regexp"
-	"strings"
 )
 
 // Numeric formula results must not be typed "str".
@@ -137,12 +136,4 @@ func retypeCells(b []byte, cells map[string]bool) []byte {
 		out.Write(tag)
 		rest = rest[tagEnd:]
 	}
-}
-
-// isWorksheetPart reports whether a zip entry is a worksheet XML part (and not
-// its _rels sibling, which also lives under xl/worksheets/).
-func isWorksheetPart(name string) bool {
-	return strings.HasPrefix(name, "xl/worksheets/") &&
-		strings.HasSuffix(name, ".xml") &&
-		!strings.Contains(name, "/_rels/")
 }
