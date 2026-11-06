@@ -201,6 +201,11 @@ easy_excel_loaded_sparklines(int $handle, string $sheet): array
 // [string $ext, ?string $error]: the raw sparkline <ext> element the sheet
 // carried in its source file ("" if none, always "" for new workbooks)
 
+easy_excel_loaded_pivot_tables(int $handle, string $sheet): array
+// [string $json, ?string $error]: [{"table":"<pivotTableDefinition…>",
+//  "cache":"<pivotCacheDefinition…>"}] the sheet carried in its source file
+// ("[]" if none, always "[]" for new workbooks)
+
 easy_excel_set_pivot_tables(int $handle, string $sheet, string $pivotTablesJson): ?string
 // [{"name":"Sales","sourceSheet":"Data","sourceRange":"A1:C100","location":"A3",
 //   "rows":[{"field":"Region"}],"columns":[{"field":"Product"}],"filters":[],

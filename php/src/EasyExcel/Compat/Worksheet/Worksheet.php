@@ -12,6 +12,7 @@ use EasyExcel\Compat\Cell\IValueBinder;
 use EasyExcel\Compat\Comment;
 use EasyExcel\Compat\RichText\RichText;
 use EasyExcel\Compat\Exception;
+use EasyExcel\Compat\Reader\Xlsx\PivotTableReader;
 use EasyExcel\Compat\Reader\Xlsx\Sparklines as SparklinesReader;
 use EasyExcel\Compat\Shared\Date;
 use EasyExcel\Compat\Spreadsheet;
@@ -920,10 +921,38 @@ class Worksheet
     /** @var \ArrayObject<int, PivotTable>|null */
     private ?\ArrayObject $pivotTables = null;
 
-    /** @return \ArrayObject<int, PivotTable> */
+    /**
+     * On a loaded workbook the first call also reads the pivot tables the
+     * source file carried (Reader\Xlsx\PivotTableReader over the extension's
+     * copy of their parts). Every add goes through here, so they are in place
+     * before any new one.
+     *
+     * @return \ArrayObject<int, PivotTable>
+     */
     public function getPivotTableCollection(): \ArrayObject
     {
-        return $this->pivotTables ??= new \ArrayObject();
+        if ($this->pivotTables !== null) {
+            return $this->pivotTables;
+        }
+        $this->pivotTables = new \ArrayObject();
+        $loaded = $this->parent !== null ? Native::loadedPivotTables($this->workbookHandle(), $this->title) : [];
+        foreach ($loaded as $parts) {
+            $table = self::loadPivotXml($parts['table'] ?? '');
+            $cache = ($parts['cache'] ?? '') !== '' ? self::loadPivotXml($parts['cache']) : null;
+            (new PivotTableReader($this, $table, $cache))->load();
+        }
+
+        return $this->pivotTables;
+    }
+
+    private static function loadPivotXml(string $xml): \SimpleXMLElement
+    {
+        $element = \simplexml_load_string($xml, \SimpleXMLElement::class, 0, 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+        if ($element === false) {
+            throw new Exception('Could not parse a pivot table part of the source file');
+        }
+
+        return $element;
     }
 
     /** @return \ArrayObject<int, PivotTable> alias of getPivotTableCollection() */
@@ -983,7 +1012,8 @@ class Worksheet
     public function writePivotTables(): void
     {
         $specs = [];
-        foreach ($this->getPivotTableCollection() as $pivotTable) {
+        // never touched: nothing generated, and the file's own tables ride along
+        foreach ($this->pivotTables ?? [] as $pivotTable) {
             if ($pivotTable->isGenerated()) {
                 $specs[] = self::pivotTableSpec($pivotTable);
             }

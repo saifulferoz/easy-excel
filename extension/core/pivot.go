@@ -2,7 +2,11 @@ package core
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"path"
+
+	"github.com/xuri/excelize/v2"
 
 	"github.com/xiidea/easy-excel/extension/compat"
 )
@@ -82,4 +86,85 @@ func (w *Workbook) applyOpPivotTables(sheet string, op pendingOp) error {
 		w.pivots[sheet] = set
 	}
 	return nil
+}
+
+const (
+	relTypePivotTable = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable"
+	relTypePivotCache = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition"
+)
+
+// typedRelsXML is relsXML plus the relationship type.
+type typedRelsXML struct {
+	Relationship []struct {
+		Target string `xml:"Target,attr"`
+		Type   string `xml:"Type,attr"`
+	} `xml:"Relationship"`
+}
+
+// loadedPivot is one pivot table a source file carried: the raw
+// pivotTableDefinition part and its pivotCacheDefinition ("" if missing).
+type loadedPivot struct {
+	Table string `json:"table"`
+	Cache string `json:"cache"`
+}
+
+// LoadedPivotTablesJSON returns the pivot tables a loaded worksheet carried
+// in its source file as a JSON list of raw parts, "[]" when none (and always
+// for workbooks created in memory). The shim parses them with
+// Reader\Xlsx\PivotTableReader.
+func (w *Workbook) LoadedPivotTablesJSON(sheet string) (string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return "", errClosed
+	}
+	if _, err := w.state(sheet); err != nil {
+		return "", err
+	}
+	out, err := json.Marshal(w.loadedPivots[sheet])
+	if err != nil || string(out) == "null" {
+		return "[]", err
+	}
+	return string(out), nil
+}
+
+// scanLoadedPivots collects each worksheet's pivot table and cache parts at
+// open time by following the sheet and pivot-table rels in f.Pkg. Pivot parts
+// are small, so they are always held in memory.
+func scanLoadedPivots(f *excelize.File) map[string][]loadedPivot {
+	out := map[string][]loadedPivot{}
+	for sheet, part := range pkgSheetParts(f) {
+		for _, table := range relTargets(f, part, relTypePivotTable) {
+			raw := pkgPart(f, table)
+			if raw == nil {
+				continue
+			}
+			p := loadedPivot{Table: string(raw)}
+			if caches := relTargets(f, table, relTypePivotCache); len(caches) > 0 {
+				p.Cache = string(pkgPart(f, caches[0]))
+			}
+			out[sheet] = append(out[sheet], p)
+		}
+	}
+	return out
+}
+
+// relTargets lists the parts owner relates to with relType, resolved to
+// package paths.
+func relTargets(f *excelize.File, owner, relType string) []string {
+	raw := pkgPart(f, path.Join(path.Dir(owner), "_rels", path.Base(owner)+".rels"))
+	if raw == nil {
+		return nil
+	}
+	var rels typedRelsXML
+	if xml.Unmarshal(raw, &rels) != nil {
+		return nil
+	}
+	var out []string
+	for _, r := range rels.Relationship {
+		if r.Type == relType {
+			out = append(out, resolvePart(owner, r.Target))
+		}
+	}
+	return out
 }

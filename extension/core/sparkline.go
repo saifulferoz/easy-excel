@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/xuri/excelize/v2"
@@ -68,6 +69,19 @@ func (w *Workbook) LoadedSparklineXML(sheet string) (string, error) {
 // save (COMPAT.md divergence 35).
 func scanLoadedSparklines(f *excelize.File) map[string]string {
 	out := map[string]string{}
+	for sheet, part := range pkgSheetParts(f) {
+		if ext := extElement(pkgPart(f, part), extURISparklineGroups); ext != "" {
+			out[sheet] = ext
+		}
+	}
+	return out
+}
+
+// pkgSheetParts maps sheet names to worksheet part paths from the workbook
+// and its rels as excelize loaded them (f.Pkg), so it is only accurate at
+// open time, before any rename.
+func pkgSheetParts(f *excelize.File) map[string]string {
+	out := map[string]string{}
 	wbRaw, relsRaw := pkgPart(f, "xl/workbook.xml"), pkgPart(f, "xl/_rels/workbook.xml.rels")
 	if wbRaw == nil || relsRaw == nil {
 		return out
@@ -82,19 +96,21 @@ func scanLoadedSparklines(f *excelize.File) map[string]string {
 		targets[r.ID] = r.Target
 	}
 	for _, s := range wb.Sheets.Sheet {
-		target, ok := targets[s.RID]
-		if !ok {
-			continue
-		}
-		part := strings.TrimPrefix(target, "/")
-		if !strings.HasPrefix(part, "xl/") {
-			part = "xl/" + part
-		}
-		if ext := extElement(pkgPart(f, part), extURISparklineGroups); ext != "" {
-			out[s.Name] = ext
+		if target, ok := targets[s.RID]; ok {
+			out[s.Name] = resolvePart("xl/workbook.xml", target)
 		}
 	}
 	return out
+}
+
+// resolvePart resolves a relationship target against the part that owns the
+// rels: relative targets are relative to that part's directory, absolute
+// ones are package-rooted.
+func resolvePart(owner, target string) string {
+	if strings.HasPrefix(target, "/") {
+		return strings.TrimPrefix(target, "/")
+	}
+	return path.Join(path.Dir(owner), target)
 }
 
 func pkgPart(f *excelize.File, name string) []byte {

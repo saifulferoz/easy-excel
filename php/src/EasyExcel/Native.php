@@ -272,6 +272,12 @@ final class Native
         return (string) self::unwrap(\easy_excel_loaded_sparklines($handle, $sheet));
     }
 
+    /** @return list<array{table: string, cache: string}> raw pivot parts a loaded sheet's source file carried */
+    public static function loadedPivotTables(int $handle, string $sheet): array
+    {
+        return \json_decode((string) self::unwrap(\easy_excel_loaded_pivot_tables($handle, $sheet)), true) ?: [];
+    }
+
     /** @param list<array<string, mixed>> $specs the sheet's full set of generated pivot tables */
     public static function setPivotTables(int $handle, string $sheet, array $specs): void
     {

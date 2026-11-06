@@ -476,6 +476,22 @@ check(\str_contains($pivotXml13, 'name="Sales"') && \str_contains($pivotXml13, '
 check(!$hasSecond13, 're-save replaced the pivot table rather than adding a second');
 $r13 = \PhpOffice\PhpSpreadsheet\IOFactory::load($w13);
 check($r13->getSheetByName('Data')->getCell('C3')->getValue() === 20.0, 'pivot workbook loads back with data intact');
+$loaded13 = $r13->getSheetByName('Report')->getPivotTableByName('Sales');
+check($loaded13 !== null && !$loaded13->isGenerated()
+    && $loaded13->getRowFields()[0]->getName() === 'Region'
+    && $loaded13->getColumnFields()[0]->getName() === 'Product'
+    && $loaded13->getDataFields()[0]->getSubtotal() === 'sum'
+    && $loaded13->getCacheDefinition()->getSourceWorksheet() === 'Data',
+    'loaded file exposes its pivot table model');
+$again13 = \sys_get_temp_dir() . '/smoke-pivot-again.xlsx';
+\PhpOffice\PhpSpreadsheet\IOFactory::createWriter($r13, 'Xlsx')->save($again13);
+$zipAgain13 = new \ZipArchive();
+$zipAgain13->open($again13);
+$keptOne13 = $zipAgain13->locateName('xl/pivotTables/pivotTable1.xml') !== false
+    && $zipAgain13->locateName('xl/pivotTables/pivotTable2.xml') === false;
+$zipAgain13->close();
+check($keptOne13, 're-saving a loaded file keeps its pivot table once');
+@\unlink($again13);
 $r13->disconnectWorksheets();
 @\unlink($w13);
 

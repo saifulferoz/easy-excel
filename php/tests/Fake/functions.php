@@ -20,6 +20,9 @@ final class EasyExcelFake
     /** @var array<int, array<string, string>> handle → sheet → sparkline <ext> a "source file" carried */
     public static array $loadedSparklines = [];
 
+    /** @var array<int, array<string, list<array{table: string, cache: string}>>> handle → sheet → pivot parts */
+    public static array $loadedPivots = [];
+
     /**
      * Canned calculated results keyed by cell ref, so tests can exercise the
      * shim's handling of what the engine returns without a real calc engine.
@@ -33,6 +36,7 @@ final class EasyExcelFake
     public static function reset(): void
     {
         self::$loadedSparklines = [];
+        self::$loadedPivots = [];
         self::$store = [];
         self::$log = [];
         self::$calculated = [];
@@ -483,6 +487,13 @@ function easy_excel_loaded_sparklines(int $handle, string $sheet): array
     EasyExcelFake::$log[] = ['loaded_sparklines', [$handle, $sheet]];
 
     return [EasyExcelFake::$loadedSparklines[$handle][$sheet] ?? '', null];
+}
+
+function easy_excel_loaded_pivot_tables(int $handle, string $sheet): array
+{
+    EasyExcelFake::$log[] = ['loaded_pivot_tables', [$handle, $sheet]];
+
+    return [\json_encode(EasyExcelFake::$loadedPivots[$handle][$sheet] ?? []), null];
 }
 
 function easy_excel_set_pivot_tables(int $handle, string $sheet, string $pivotTablesJson): ?string

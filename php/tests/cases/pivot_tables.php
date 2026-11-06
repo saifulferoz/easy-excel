@@ -5,6 +5,7 @@ declare(strict_types=1);
 use EasyExcel\Compat\Worksheet\PivotTable\PivotCacheDefinition;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotField;
 use EasyExcel\Compat\Exception;
+use EasyExcel\Compat\Reader\Xlsx\PivotTableReader;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotFieldGroup;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotTable;
@@ -36,6 +37,29 @@ function pivotSave(Spreadsheet $s): void
     } finally {
         @\unlink($path);
     }
+}
+
+/** Pivot parts as excelize writes them: Region on rows, Product on columns, Amount averaged and summed. */
+function pivotPartsFixture(): array
+{
+    $main = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+
+    return [
+        'table' => "<pivotTableDefinition $main name=\"Sales\" cacheId=\"2\"><location ref=\"A3:D9\" firstHeaderRow=\"1\"/>"
+            . '<pivotFields count="3"><pivotField axis="axisRow"/><pivotField axis="axisCol"/><pivotField dataField="1"/></pivotFields>'
+            . '<rowFields count="1"><field x="0"/></rowFields>'
+            . '<dataFields count="2"><dataField name="Average of Amount" fld="2" subtotal="average"/><dataField name="x" fld="9"/></dataFields>'
+            . '</pivotTableDefinition>',
+        'cache' => "<pivotCacheDefinition $main refreshOnLoad=\"true\"><cacheSource type=\"worksheet\">"
+            . '<worksheetSource ref="A1:C4" sheet="Data"/></cacheSource>'
+            . '<cacheFields count="3"><cacheField name="Region"/><cacheField name="Product"/><cacheField name="Amount"/></cacheFields>'
+            . '</pivotCacheDefinition>',
+    ];
+}
+
+function pivotXml(string $xml): \SimpleXMLElement
+{
+    return \simplexml_load_string($xml, \SimpleXMLElement::class, 0, 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
 }
 
 return [
@@ -343,5 +367,66 @@ return [
         $s = pivotSalesWorkbook();
         $s->getSheetByName('Report')->addPivotTable((new PivotTable('Broken'))->setGenerated(true));
         T::throws(Exception::class, fn () => pivotSave($s));
+    },
+
+    // --------------------------------------------- Reader\Xlsx\PivotTableReader
+
+    'pivot: reader parses name, location, source and field layout' => function (): void {
+        $ws = (new Spreadsheet())->getActiveSheet();
+        $parts = pivotPartsFixture();
+        (new PivotTableReader($ws, pivotXml($parts['table']), pivotXml($parts['cache'])))->load();
+
+        $t = $ws->getPivotTableByName('Sales');
+        T::ok($t !== null, 'registered on the sheet');
+        T::same('A3:D9', $t->getLocation());
+        T::ok(!$t->isGenerated(), 'loaded tables are not generated');
+        $cache = $t->getCacheDefinition();
+        T::same(2, $cache->getCacheId());
+        T::same('Data', $cache->getSourceWorksheet());
+        T::same('A1:C4', $cache->getSourceRange());
+        T::same(['Region', 'Product', 'Amount'], $cache->getCacheFields());
+        T::same('Region', $t->getRowFields()[0]->getName());
+        T::same('Product', $t->getColumnFields()[0]->getName());
+        $amount = $t->getDataFields();
+        T::same(1, \count($amount), 'a dataField pointing at a missing field is ignored');
+        T::same('Amount', $amount[0]->getName());
+        T::same('average', $amount[0]->getSubtotal());
+        T::same(null, $amount[0]->getDataFieldCaption(), 'upstream does not read the caption');
+    },
+
+    'pivot: reader works without a cache definition' => function (): void {
+        $ws = (new Spreadsheet())->getActiveSheet();
+        $main = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+        (new PivotTableReader($ws, pivotXml("<pivotTableDefinition $main name=\"Bare\">"
+            . '<pivotFields><pivotField/></pivotFields><dataFields><dataField fld="0"/></dataFields></pivotTableDefinition>')))->load();
+        $t = $ws->getPivotTableByName('Bare');
+        T::same(null, $t->getCacheDefinition()->getCacheId());
+        T::same(null, $t->getCacheDefinition()->getSourceRange());
+        T::same('', $t->getFields()[0]->getName(), 'no cache, no field names');
+        T::same('sum', $t->getDataFields()[0]->getSubtotal(), 'sum when subtotal is absent');
+        T::same('', $t->getLocation());
+    },
+
+    'pivot: a loaded sheet exposes its file tables and never resends them' => function (): void {
+        $s = pivotSalesWorkbook();
+        EasyExcelFake::$loadedPivots[$s->getHandle()]['Report'] = [pivotPartsFixture()];
+        $report = $s->getSheetByName('Report');
+        T::same(['Sales'], $report->getPivotTableNames());
+        T::ok($report->getPivotTableByName('Sales')->getWorksheet() === $report, 'bound to the sheet');
+
+        (new PivotTableBuilder($s->getSheetByName('Data'), 'A1:C5'))->addDataField('Amount')->build($report, 'H3', 'New');
+        T::same(['Sales', 'New'], $report->getPivotTableNames(), 'file tables come first');
+        pivotSave($s);
+        $calls = EasyExcelFake::calls('set_pivot_tables');
+        T::same(['New'], \array_column($calls[0][1][2], 'name'), 'only the generated table is sent');
+        T::same(1, \count(\array_filter(
+            EasyExcelFake::calls('loaded_pivot_tables'),
+            static fn (array $c): bool => $c[1][1] === 'Report',
+        )), 'the file is asked once per sheet');
+    },
+
+    'pivot: a save without touching pivots never asks the extension' => function (): void {
+        pivotSave(pivotSalesWorkbook());
+        T::same([], EasyExcelFake::calls('loaded_pivot_tables'));
     },
 ];

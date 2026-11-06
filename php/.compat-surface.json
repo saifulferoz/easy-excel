@@ -287,7 +287,6 @@
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\Hyperlinks",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\Namespaces",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\PageSetup",
-    "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\PivotTableReader",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\Properties",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\SharedFormula",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\SheetViewOptions",

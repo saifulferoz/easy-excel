@@ -80,14 +80,16 @@ type Workbook struct {
 	pivots  map[string]pivotSet // sheet → generated pivot tables written there
 	// sheet → sparkline <ext> element from the source file (Open only)
 	loadedSparklines map[string]string
-	defaultSpec      compat.StyleSpec // workbook default style (getDefaultStyle)
-	gate             *limits.Gate
-	policy           *exio.Policy
-	styles           styleInterner
-	estBytes         int64
-	degraded         bool
-	needsReopen      bool // streams were flushed by a save; model edits need a reopen
-	closed           bool
+	// sheet → pivot table parts from the source file (Open only)
+	loadedPivots map[string][]loadedPivot
+	defaultSpec  compat.StyleSpec // workbook default style (getDefaultStyle)
+	gate         *limits.Gate
+	policy       *exio.Policy
+	styles       styleInterner
+	estBytes     int64
+	degraded     bool
+	needsReopen  bool // streams were flushed by a save; model edits need a reopen
+	closed       bool
 
 	// Formula cache controls (formulacache.go). fullCalcOnLoad is free and
 	// defaults on; precalculate forfeits streaming, so it is opt-in and only
@@ -214,6 +216,7 @@ func Open(path, password string, env *Env) (*Workbook, error) {
 		// before any sheet is parsed or renamed: excelize still holds the
 		// source parts verbatim in f.Pkg
 		loadedSparklines: scanLoadedSparklines(f),
+		loadedPivots:     scanLoadedPivots(f),
 		degraded:         true, // random-access from the start
 		// Free, and fixes every spreadsheet application; see formulacache.go.
 		fullCalcOnLoad: true,
@@ -308,6 +311,7 @@ func (w *Workbook) DeleteSheet(name string) error {
 	delete(w.sheets, name)
 	delete(w.pivots, name)
 	delete(w.loadedSparklines, name)
+	delete(w.loadedPivots, name)
 	delete(w.filters, name)
 	return nil
 }
@@ -345,6 +349,10 @@ func (w *Workbook) RenameSheet(oldName, newName string) error {
 	if ext, ok := w.loadedSparklines[oldName]; ok {
 		delete(w.loadedSparklines, oldName)
 		w.loadedSparklines[newName] = ext
+	}
+	if pivots, ok := w.loadedPivots[oldName]; ok {
+		delete(w.loadedPivots, oldName)
+		w.loadedPivots[newName] = pivots
 	}
 	return nil
 }

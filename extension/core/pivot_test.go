@@ -2,6 +2,7 @@ package core
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -217,5 +218,74 @@ func TestSetPivotTablesRejectsBadInput(t *testing.T) {
 	}
 	if err := w.SetPivotTables("Nope", "[]"); err == nil {
 		t.Error("unknown sheet must fail")
+	}
+}
+
+func TestLoadedPivotTablesJSON(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.RenameSheet("Worksheet", "Data"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.AddSheet("Report"); err != nil {
+		t.Fatal(err)
+	}
+	writeSales(t, w, "Data")
+	if err := w.SetPivotTables("Report", "["+fmt.Sprintf(salesPivot, "Sales")+"]"); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := w.LoadedPivotTablesJSON("Report"); err != nil || out != "[]" {
+		t.Errorf("in-memory workbook = %q, %v; generated tables are not 'loaded'", out, err)
+	}
+	path := filepath.Join(t.TempDir(), "source.xlsx")
+	if err := w.SaveXlsx(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+
+	r, err := Open(path, "", testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	out, err := r.LoadedPivotTablesJSON("Report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pivots []loadedPivot
+	if err := json.Unmarshal([]byte(out), &pivots); err != nil {
+		t.Fatal(err)
+	}
+	if len(pivots) != 1 {
+		t.Fatalf("loaded pivots = %d, want 1", len(pivots))
+	}
+	if !strings.Contains(pivots[0].Table, `<pivotTableDefinition`) || !strings.Contains(pivots[0].Table, `name="Sales"`) {
+		t.Errorf("table part = %.120s", pivots[0].Table)
+	}
+	if !strings.Contains(pivots[0].Cache, `<worksheetSource ref="A1:C4" sheet="Data"`) {
+		t.Errorf("cache part = %.200s", pivots[0].Cache)
+	}
+	if out, _ := r.LoadedPivotTablesJSON("Data"); out != "[]" {
+		t.Errorf("source sheet carries no pivots, got %q", out)
+	}
+	if err := r.RenameSheet("Report", "Summary"); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := r.LoadedPivotTablesJSON("Summary"); !strings.Contains(out, "pivotTableDefinition") {
+		t.Error("loaded pivots must follow a rename")
+	}
+}
+
+func TestResolvePart(t *testing.T) {
+	for _, c := range [][3]string{
+		{"xl/worksheets/sheet2.xml", "../pivotTables/pivotTable1.xml", "xl/pivotTables/pivotTable1.xml"},
+		{"xl/workbook.xml", "worksheets/sheet1.xml", "xl/worksheets/sheet1.xml"},
+		{"xl/workbook.xml", "/xl/worksheets/sheet1.xml", "xl/worksheets/sheet1.xml"},
+	} {
+		if got := resolvePart(c[0], c[1]); got != c[2] {
+			t.Errorf("resolvePart(%q, %q) = %q, want %q", c[0], c[1], got, c[2])
+		}
 	}
 }
