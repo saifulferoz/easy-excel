@@ -400,7 +400,6 @@
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\ProtectedRange",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\Sparkline\\Sparkline",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\Sparkline\\SparklineGroup",
-    "PhpOffice\\PhpSpreadsheet\\Worksheet\\Sparkline\\SparklineType",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\Table",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\Table\\Column",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\Table\\TableDxfsStyle",
