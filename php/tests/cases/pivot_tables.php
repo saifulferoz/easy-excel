@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use EasyExcel\Compat\Worksheet\PivotTable\PivotField;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotFieldGroup;
 
 return [
@@ -48,5 +49,45 @@ return [
 
     'pivot: PivotFieldGroup has no public constructor' => function (): void {
         T::ok(!(new \ReflectionMethod(PivotFieldGroup::class, '__construct'))->isPublic(), 'factories only');
+    },
+
+    // ------------------------------------------------------------- PivotField
+
+    'pivot: PivotField starts unplaced and not a value field' => function (): void {
+        $f = new PivotField(2, 'Region');
+        T::same(2, $f->getIndex());
+        T::same('Region', $f->getName());
+        T::same(PivotField::AXIS_NONE, $f->getAxis());
+        T::same(false, $f->isDataField());
+        T::same(null, $f->getSubtotal());
+        T::same(null, $f->getDataFieldCaption());
+        T::same('', (new PivotField(0))->getName(), 'name defaults to empty');
+    },
+
+    'pivot: PivotField setters round-trip and are fluent' => function (): void {
+        $f = new PivotField(1);
+        $same = $f->setName('Amount')->setAxis(PivotField::AXIS_VALUES)->setDataField(true)
+            ->setSubtotal(PivotField::SUBTOTAL_AVERAGE)->setDataFieldCaption('Average of Amount');
+        T::ok($same === $f, 'fluent');
+        T::same('Amount', $f->getName());
+        T::same('axisValues', $f->getAxis());
+        T::same(true, $f->isDataField());
+        T::same('average', $f->getSubtotal());
+        T::same('Average of Amount', $f->getDataFieldCaption());
+        $f->setSubtotal(null)->setDataFieldCaption(null);
+        T::same(null, $f->getSubtotal());
+    },
+
+    'pivot: PivotField constants match the OOXML attribute values' => function (): void {
+        T::same(['axisRow', 'axisCol', 'axisPage'], [PivotField::AXIS_ROW, PivotField::AXIS_COLUMN, PivotField::AXIS_PAGE]);
+        T::same(
+            ['sum', 'count', 'average', 'max', 'min', 'product', 'countNums', 'stdDev', 'stdDevp', 'var', 'varp'],
+            [
+                PivotField::SUBTOTAL_SUM, PivotField::SUBTOTAL_COUNT, PivotField::SUBTOTAL_AVERAGE,
+                PivotField::SUBTOTAL_MAX, PivotField::SUBTOTAL_MIN, PivotField::SUBTOTAL_PRODUCT,
+                PivotField::SUBTOTAL_COUNT_NUMS, PivotField::SUBTOTAL_STD_DEV, PivotField::SUBTOTAL_STD_DEV_P,
+                PivotField::SUBTOTAL_VAR, PivotField::SUBTOTAL_VAR_P,
+            ],
+        );
     },
 ];
