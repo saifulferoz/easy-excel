@@ -4,11 +4,31 @@ declare(strict_types=1);
 
 use EasyExcel\Compat\Cell\CellAddress;
 use EasyExcel\Compat\Exception;
+use EasyExcel\Compat\Reader\Xlsx\Sparklines as SparklinesReader;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Worksheet\Sparkline\SparklineGroup;
 use EasyExcel\Compat\Writer\Xlsx;
 use EasyExcel\Compat\Worksheet\Sparkline\Sparkline;
 use EasyExcel\Compat\Worksheet\Sparkline\SparklineType;
+
+/** A sparkline <ext> as excelize writes it: two groups, the second without colours. */
+function sparklineExtFixture(): string
+{
+    return '<ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main" uri="{05C60535-1F16-4fd2-B633-F4F36F0B64E0}">'
+        . '<x14:sparklineGroups xmlns:xm="http://schemas.microsoft.com/office/excel/2006/main">'
+        . '<x14:sparklineGroup type="column" lineWeight="1.25" high="1" negative="true" displayXAxis="1"'
+        . ' displayEmptyCellsAs="zero" maxAxisType="custom" manualMax="9.5" rightToLeft="0">'
+        . '<x14:colorSeries rgb="FF00B050"></x14:colorSeries><x14:colorNegative rgb="FFFF0000"></x14:colorNegative>'
+        . '<x14:sparklines>'
+        . '<x14:sparkline><xm:f>Worksheet!A1:C1</xm:f><xm:sqref>D1</xm:sqref></x14:sparkline>'
+        . '<x14:sparkline><xm:f>Worksheet!A2:C2</xm:f><xm:sqref>D2</xm:sqref></x14:sparkline>'
+        . '</x14:sparklines></x14:sparklineGroup>'
+        . '<x14:sparklineGroup type="stacked"><x14:sparklines>'
+        . '<x14:sparkline><xm:f>Worksheet!A3:C3</xm:f><xm:sqref>D3</xm:sqref></x14:sparkline>'
+        . '</x14:sparklines></x14:sparklineGroup>'
+        . '<x14:sparklineGroup><x14:sparklines></x14:sparklines></x14:sparklineGroup>'
+        . '</x14:sparklineGroups></ext>';
+}
 
 return [
     'sparklines: SparklineType cases carry the OOXML type values' => function (): void {
@@ -197,5 +217,88 @@ return [
             @\unlink($path);
         }
         T::same([], EasyExcelFake::calls('add_sparkline_group'));
+    },
+
+    // ---------------------------------------------------- Reader\Xlsx\Sparklines
+
+    'sparklines: reader parses groups, flags, colours and members' => function (): void {
+        $ws = (new Spreadsheet())->getActiveSheet();
+        $xml = \simplexml_load_string(
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><extLst>'
+            . sparklineExtFixture() . '<ext uri="{other}"><foo/></ext></extLst></worksheet>',
+        );
+        (new SparklinesReader($ws, $xml))->load();
+
+        $groups = $ws->getSparklineGroupCollection();
+        T::same(2, \count($groups), 'the empty third group is dropped');
+        $g = $groups[0];
+        T::same(SparklineType::Column, $g->getType());
+        T::same(1.25, $g->getLineWeight());
+        T::same(true, $g->getDisplayHigh(), '"1" is true');
+        T::same(true, $g->getDisplayNegative(), '"true" is true');
+        T::same(true, $g->getDisplayXAxis());
+        T::same(false, $g->getRightToLeft(), '"0" is false');
+        T::same(false, $g->getDisplayLow(), 'absent is false');
+        T::same('zero', $g->getDisplayEmptyCellsAs());
+        T::same('custom', $g->getMaxAxisType());
+        T::same(9.5, $g->getManualMax());
+        T::same(null, $g->getManualMin());
+        T::same('FF00B050', $g->getColorSeries());
+        T::same('FFFF0000', $g->getColorNegative());
+        T::same(null, $g->getColorMarkers(), 'an absent colour reads as null, like upstream');
+        T::same(['D1', 'D2'], \array_map('strval', $g->getSparklines()));
+        T::same('Worksheet!A2:C2', $g->getSparklines()[1]->getDataRange());
+        T::same(SparklineType::WinLoss, $groups[1]->getType());
+        T::same(null, $groups[1]->getColorSeries());
+        T::ok(!$g->isWritten(), 'a direct reader call adds ordinary, unwritten groups');
+    },
+
+    'sparklines: reader ignores worksheets without sparklines' => function (): void {
+        $ws = (new Spreadsheet())->getActiveSheet();
+        (new SparklinesReader($ws, \simplexml_load_string('<worksheet><sheetData/></worksheet>')))->load();
+        (new SparklinesReader($ws, \simplexml_load_string('<worksheet><extLst><ext uri="{x}"/></extLst></worksheet>')))->load();
+        T::same(0, \count($ws->getSparklineGroupCollection()));
+    },
+
+    'sparklines: a loaded sheet exposes its file groups, frozen and not re-sent' => function (): void {
+        $s = new Spreadsheet();
+        EasyExcelFake::$loadedSparklines[$s->getHandle()]['Worksheet'] = sparklineExtFixture();
+        $ws = $s->getActiveSheet();
+        $ws->addSparkline(new Sparkline('H1', 'Worksheet!E1:G1')); // first touch is an add
+
+        $groups = $ws->getSparklineGroupCollection();
+        T::same(3, \count($groups), 'file groups first, then the new one');
+        T::same('D1', (string) $groups[0]->getSparklines()[0]);
+        T::ok($groups[0]->isWritten() && $groups[1]->isWritten(), 'file groups are already written');
+        T::ok(!$groups[2]->isWritten(), 'the new group is not');
+        T::throws(Exception::class, fn () => $groups[0]->setDisplayLow(true), 'file groups are frozen');
+
+        $path = \tempnam(\sys_get_temp_dir(), 'spark') . '.xlsx';
+        try {
+            (new Xlsx($s))->save($path);
+        } finally {
+            @\unlink($path);
+        }
+        $calls = EasyExcelFake::calls('add_sparkline_group');
+        T::same(1, \count($calls), 'only the new group is sent');
+        T::same('H1', $calls[0][1][2]['sparklines'][0]['location']);
+        T::same(1, \count(EasyExcelFake::calls('loaded_sparklines')), 'the file is asked once per sheet');
+    },
+
+    'sparklines: a save without touching sparklines never asks the extension' => function (): void {
+        $s = new Spreadsheet();
+        $path = \tempnam(\sys_get_temp_dir(), 'spark') . '.xlsx';
+        try {
+            (new Xlsx($s))->save($path);
+        } finally {
+            @\unlink($path);
+        }
+        T::same([], EasyExcelFake::calls('loaded_sparklines'));
+    },
+
+    'sparklines: a detached sheet has no file to read' => function (): void {
+        $ws = new \EasyExcel\Compat\Worksheet\Worksheet(null, 'Detached');
+        T::same(0, \count($ws->getSparklineGroupCollection()));
+        T::same([], EasyExcelFake::calls('loaded_sparklines'));
     },
 ];

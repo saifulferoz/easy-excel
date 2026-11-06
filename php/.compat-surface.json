@@ -292,7 +292,6 @@
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\SharedFormula",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\SheetViewOptions",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\SheetViews",
-    "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\Sparklines",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\Styles",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\TableReader",
     "PhpOffice\\PhpSpreadsheet\\Reader\\Xlsx\\Theme",

@@ -73,19 +73,21 @@ type sheetState struct {
 // All methods are safe for concurrent use; a single mutex confines the
 // workbook to one operation at a time (PLAN.md §7.4).
 type Workbook struct {
-	mu          sync.Mutex
-	f           *excelize.File
-	sheets      map[string]*sheetState
-	filters     map[string]string   // sheet → auto-filter ref injected at save
-	pivots      map[string]pivotSet // sheet → generated pivot tables written there
-	defaultSpec compat.StyleSpec    // workbook default style (getDefaultStyle)
-	gate        *limits.Gate
-	policy      *exio.Policy
-	styles      styleInterner
-	estBytes    int64
-	degraded    bool
-	needsReopen bool // streams were flushed by a save; model edits need a reopen
-	closed      bool
+	mu      sync.Mutex
+	f       *excelize.File
+	sheets  map[string]*sheetState
+	filters map[string]string   // sheet → auto-filter ref injected at save
+	pivots  map[string]pivotSet // sheet → generated pivot tables written there
+	// sheet → sparkline <ext> element from the source file (Open only)
+	loadedSparklines map[string]string
+	defaultSpec      compat.StyleSpec // workbook default style (getDefaultStyle)
+	gate             *limits.Gate
+	policy           *exio.Policy
+	styles           styleInterner
+	estBytes         int64
+	degraded         bool
+	needsReopen      bool // streams were flushed by a save; model edits need a reopen
+	closed           bool
 
 	// Formula cache controls (formulacache.go). fullCalcOnLoad is free and
 	// defaults on; precalculate forfeits streaming, so it is opt-in and only
@@ -209,7 +211,10 @@ func Open(path, password string, env *Env) (*Workbook, error) {
 		gate:     env.gate(),
 		policy:   env.policy(),
 		estBytes: est,
-		degraded: true, // random-access from the start
+		// before any sheet is parsed or renamed: excelize still holds the
+		// source parts verbatim in f.Pkg
+		loadedSparklines: scanLoadedSparklines(f),
+		degraded:         true, // random-access from the start
 		// Free, and fixes every spreadsheet application; see formulacache.go.
 		fullCalcOnLoad: true,
 		openedFromFile: true,
@@ -302,6 +307,7 @@ func (w *Workbook) DeleteSheet(name string) error {
 	}
 	delete(w.sheets, name)
 	delete(w.pivots, name)
+	delete(w.loadedSparklines, name)
 	delete(w.filters, name)
 	return nil
 }
@@ -335,6 +341,10 @@ func (w *Workbook) RenameSheet(oldName, newName string) error {
 	if set, ok := w.pivots[oldName]; ok {
 		delete(w.pivots, oldName)
 		w.pivots[newName] = set
+	}
+	if ext, ok := w.loadedSparklines[oldName]; ok {
+		delete(w.loadedSparklines, oldName)
+		w.loadedSparklines[newName] = ext
 	}
 	return nil
 }

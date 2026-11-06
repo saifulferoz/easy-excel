@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xuri/excelize/v2"
 )
 
 func TestAddSparklineGroupOnStreamedSheet(t *testing.T) {
@@ -109,4 +111,87 @@ func worksheetXML(t *testing.T, path, part string) string {
 	}
 	t.Fatalf("%s missing from %s", part, path)
 	return ""
+}
+
+func TestLoadedSparklineXML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "source.xlsx")
+	src := excelize.NewFile()
+	if _, err := src.NewSheet("Plain"); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SetSheetRow("Sheet1", "A1", &[]any{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.AddSparkline("Sheet1", &excelize.SparklineOptions{
+		Location: []string{"D1"}, Range: []string{"Sheet1!A1:C1"}, Type: "column", High: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	src.Close()
+
+	w, err := Open(path, "", testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	ext, err := w.LoadedSparklineXML("Sheet1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{extURISparklineGroups, `<x14:sparklineGroup `, `type="column"`, `<xm:sqref>D1</xm:sqref>`} {
+		if !strings.Contains(ext, want) {
+			t.Errorf("loaded ext lacks %q:\n%s", want, ext)
+		}
+	}
+	if !strings.HasPrefix(ext, "<ext ") || !strings.HasSuffix(ext, "</ext>") {
+		t.Errorf("not a whole <ext> element: %.60s…%s", ext, ext[max(0, len(ext)-10):])
+	}
+	if ext, _ := w.LoadedSparklineXML("Plain"); ext != "" {
+		t.Errorf("sheet without sparklines = %q", ext)
+	}
+
+	if err := w.RenameSheet("Sheet1", "Trend"); err != nil {
+		t.Fatal(err)
+	}
+	if ext, _ := w.LoadedSparklineXML("Trend"); !strings.Contains(ext, "<x14:sparklineGroup ") {
+		t.Error("loaded sparklines must follow a rename")
+	}
+	if _, err := w.LoadedSparklineXML("Sheet1"); err == nil {
+		t.Error("old name must be gone after the rename")
+	}
+}
+
+func TestLoadedSparklineXMLEmptyForNewWorkbook(t *testing.T) {
+	w, err := New(testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	fillRows(t, w, "Worksheet", 1, 2)
+	if err := w.AddSparklineGroup("Worksheet", `{"sparklines":[{"location":"G1","dataRange":"Worksheet!A1:B1"}]}`); err != nil {
+		t.Fatal(err)
+	}
+	if ext, err := w.LoadedSparklineXML("Worksheet"); err != nil || ext != "" {
+		t.Errorf("new workbook = %q, %v; groups added in memory are not 'loaded'", ext, err)
+	}
+	if w.Degraded() {
+		t.Error("asking for loaded sparklines must not end streaming")
+	}
+}
+
+func TestExtElement(t *testing.T) {
+	doc := []byte(`<worksheet><x:extLst><x:ext uri="{A}"><a/></x:ext><x:ext uri="` + extURISparklineGroups + `"><g/></x:ext></x:extLst></worksheet>`)
+	if got := extElement(doc, extURISparklineGroups); got != `<x:ext uri="`+extURISparklineGroups+`"><g/></x:ext>` {
+		t.Errorf("prefixed ext = %q", got)
+	}
+	if got := extElement([]byte(`<worksheet/>`), extURISparklineGroups); got != "" {
+		t.Errorf("absent = %q", got)
+	}
+	if got := extElement([]byte(`<foo bar="`+extURISparklineGroups+`"/>`), extURISparklineGroups); got != "" {
+		t.Errorf("uri outside an ext element = %q", got)
+	}
 }

@@ -266,6 +266,12 @@ final class Native
         self::check(\easy_excel_add_sparkline_group($handle, $sheet, \json_encode($spec, \JSON_THROW_ON_ERROR)));
     }
 
+    /** The sparkline <ext> element a loaded sheet's source file carried; "" if none. */
+    public static function loadedSparklines(int $handle, string $sheet): string
+    {
+        return (string) self::unwrap(\easy_excel_loaded_sparklines($handle, $sheet));
+    }
+
     /** @param list<array<string, mixed>> $specs the sheet's full set of generated pivot tables */
     public static function setPivotTables(int $handle, string $sheet, array $specs): void
     {

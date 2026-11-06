@@ -131,6 +131,7 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Area | API | Notes |
 |---|---|---|
 | Sparklines | `Worksheet\Sparkline\SparklineType`, `Sparkline`, `SparklineGroup` (all getters/setters, `EMPTY_AS_*`/`AXIS_*`), `Worksheet::addSparkline/addSparklineGroup/getSparklineGroupCollection/removeSparklineGroupCollection` | `excelize.AddSparkline`, sent by `Writer\Xlsx::save()` rather than on add, because upstream returns the group for further formatting. Written groups are frozen and cannot be removed (divergence 32) |
+| Loaded sparklines | `Reader\Xlsx\Sparklines` (constructor + `load()`), and `getSparklineGroupCollection()` on a loaded sheet | at open the extension byte-scans each in-memory worksheet part for the sparkline `<ext>`; the first collection access parses it with `Reader\Xlsx\Sparklines`. Those groups are already in the file, so they arrive written (frozen) and are not re-sent on save. See divergence 35 for very large sheets |
 | Pivot tables | `Worksheet\PivotTable\PivotTableBuilder` (`addRowField`/`addColumnField`/`addPageField`/`addDataField`, `groupFieldBy*`, `build`), `PivotTable`, `PivotField`, `PivotCacheDefinition`, `PivotFieldGroup`; `Worksheet::addPivotTable/getPivotTables/getPivotTableCollection/getPivotTableNames/getPivotTableByName/removePivotTableCollection` | generated tables go through `excelize.AddPivotTable` at `Writer\Xlsx::save()`, with refresh-on-load set and PhpSpreadsheet's writer defaults (grand totals, `PivotStyleLight16`). Each save replaces the sheet's generated set, so edits and `removePivotTableCollection()` reach the next save. Tables from a loaded file are left as excelize keeps them. The builder reads the source range in bulk, not cell by cell. Grouping is not written (divergence 33); see divergence 34 for re-saves |
 
 ## Documented divergences
@@ -320,6 +321,11 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     leaves the previous table and cache parts in the package, unreferenced.
     Excel and LibreOffice ignore unreferenced parts; only the file size
     grows. A fresh `Spreadsheet` per export avoids it altogether.
+35. **Loaded sparklines are exposed for in-memory worksheet parts only** —
+    excelize keeps parts above its 16 MB in-memory XML limit in temp files it
+    does not expose, so a sheet whose XML exceeds that reports an empty
+    `getSparklineGroupCollection()`. Its sparklines are still preserved when
+    the workbook is saved again.
 
 ## Aliasing modes
 

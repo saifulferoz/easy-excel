@@ -431,6 +431,20 @@ check(\str_contains($sheet12, '<x14:sparklineGroup ') && \str_contains($sheet12,
     'sparkline group written to the worksheet extLst');
 $r12 = \PhpOffice\PhpSpreadsheet\IOFactory::load($w12);
 check($r12->getActiveSheet()->getCell('C3')->getValue() === 6.0, 'sparkline workbook loads back with data intact');
+$loaded12 = $r12->getActiveSheet()->getSparklineGroupCollection();
+check(\count($loaded12) === 1
+    && $loaded12[0]->getType() === \PhpOffice\PhpSpreadsheet\Worksheet\Sparkline\SparklineType::Column
+    && \count($loaded12[0]->getSparklines()) === 2 && $loaded12[0]->getDisplayNegative()
+    && $loaded12[0]->getColorSeries() === 'FF00B050',
+    'loaded file exposes its sparkline groups');
+$again12 = \sys_get_temp_dir() . '/smoke-sparklines-again.xlsx';
+\PhpOffice\PhpSpreadsheet\IOFactory::createWriter($r12, 'Xlsx')->save($again12);
+$zipAgain12 = new \ZipArchive();
+$zipAgain12->open($again12);
+$sheetAgain12 = (string) $zipAgain12->getFromName('xl/worksheets/sheet1.xml');
+$zipAgain12->close();
+check(\substr_count($sheetAgain12, '<x14:sparklineGroup ') === 1, 're-saving a loaded file keeps its group once');
+@\unlink($again12);
 $r12->disconnectWorksheets();
 @\unlink($w12);
 

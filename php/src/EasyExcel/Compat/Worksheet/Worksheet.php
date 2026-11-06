@@ -12,6 +12,7 @@ use EasyExcel\Compat\Cell\IValueBinder;
 use EasyExcel\Compat\Comment;
 use EasyExcel\Compat\RichText\RichText;
 use EasyExcel\Compat\Exception;
+use EasyExcel\Compat\Reader\Xlsx\Sparklines as SparklinesReader;
 use EasyExcel\Compat\Shared\Date;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Style\Color;
@@ -828,10 +829,41 @@ class Worksheet
     /** @var \ArrayObject<int, SparklineGroup>|null */
     private ?\ArrayObject $sparklineGroups = null;
 
-    /** @return \ArrayObject<int, SparklineGroup> */
+    /**
+     * On a loaded workbook the first call also reads the groups the source
+     * file carried (Reader\Xlsx\Sparklines over the extension's copy of the
+     * sheet's sparkline <ext>). Every add goes through here, so the file's
+     * groups are always in place before any new one. They are already in the
+     * file, so they are marked written rather than sent again.
+     *
+     * @return \ArrayObject<int, SparklineGroup>
+     */
     public function getSparklineGroupCollection(): \ArrayObject
     {
-        return $this->sparklineGroups ??= new \ArrayObject();
+        if ($this->sparklineGroups !== null) {
+            return $this->sparklineGroups;
+        }
+        $this->sparklineGroups = new \ArrayObject();
+        $ext = $this->parent !== null ? Native::loadedSparklines($this->workbookHandle(), $this->title) : '';
+        if ($ext !== '') {
+            $xml = \simplexml_load_string(
+                '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+                . ' xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+                . ' xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"'
+                . ' xmlns:xm="http://schemas.microsoft.com/office/excel/2006/main"'
+                . ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+                . '<extLst>' . $ext . '</extLst></worksheet>',
+            );
+            if ($xml === false) {
+                throw new Exception("Could not parse the sparklines of worksheet \"{$this->title}\"");
+            }
+            (new SparklinesReader($this, $xml))->load();
+            foreach ($this->sparklineGroups as $group) {
+                $group->markWritten();
+            }
+        }
+
+        return $this->sparklineGroups;
     }
 
     public function addSparklineGroup(SparklineGroup $sparklineGroup): static
@@ -874,7 +906,7 @@ class Worksheet
     public function writeSparklines(): void
     {
         if ($this->sparklineGroups === null) {
-            return;
+            return; // never touched: nothing new, and the file's own groups ride along
         }
         foreach ($this->sparklineGroups as $group) {
             if ($group->isWritten() || $group->getSparklines() === []) {

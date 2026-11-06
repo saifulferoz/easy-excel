@@ -542,6 +542,16 @@ func easy_excel_set_pivot_tables(handle int64, sheet *C.zend_string, pivotTables
 	return errOnly(wb.SetPivotTables(goStr(sheet), goStr(pivotTablesJson)))
 }
 
+//export_php:function easy_excel_loaded_sparklines(int $handle, string $sheet): array
+func easy_excel_loaded_sparklines(handle int64, sheet *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return pair(nil, err)
+	}
+	ext, err := wb.LoadedSparklineXML(goStr(sheet))
+	return pair(ext, err)
+}
+
 // --- save -------------------------------------------------------------------------
 
 //export_php:function easy_excel_save_xlsx(int $handle, string $path, string $password): ?string

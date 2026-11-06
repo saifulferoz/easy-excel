@@ -197,6 +197,10 @@ easy_excel_add_sparkline_group(int $handle, string $sheet, string $groupJson): ?
 //  "negative":false,"xAxis":false,"rightToLeft":false,"colorSeries":"FF376092"}
 // types (OOXML values): line, column, stacked (win/loss); applied at save
 
+easy_excel_loaded_sparklines(int $handle, string $sheet): array
+// [string $ext, ?string $error]: the raw sparkline <ext> element the sheet
+// carried in its source file ("" if none, always "" for new workbooks)
+
 easy_excel_set_pivot_tables(int $handle, string $sheet, string $pivotTablesJson): ?string
 // [{"name":"Sales","sourceSheet":"Data","sourceRange":"A1:C100","location":"A3",
 //   "rows":[{"field":"Region"}],"columns":[{"field":"Product"}],"filters":[],
