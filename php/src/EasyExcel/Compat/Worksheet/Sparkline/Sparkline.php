@@ -20,6 +20,8 @@ class Sparkline implements \Stringable
     /** Plotted range, e.g. `Sheet1!B2:F2` or `B2:F2`, kept as given. */
     private string $dataRange = '';
 
+    private bool $written = false;
+
     public function __construct(CellAddress|string $location = '', string $dataRange = '')
     {
         if ($location !== '') {
@@ -35,6 +37,7 @@ class Sparkline implements \Stringable
 
     public function setLocation(CellAddress|string $location): self
     {
+        $this->assertMutable();
         $location = (string) $location;
         if (\str_contains($location, ':')) {
             throw new Exception('Sparkline location must be a single cell, not a range');
@@ -56,6 +59,7 @@ class Sparkline implements \Stringable
 
     public function setDataRange(string $dataRange): self
     {
+        $this->assertMutable();
         $this->dataRange = $dataRange;
 
         return $this;
@@ -64,5 +68,18 @@ class Sparkline implements \Stringable
     public function __toString(): string
     {
         return $this->location;
+    }
+
+    /** @internal frozen once its group was written (see SparklineGroup) */
+    public function markWritten(): void
+    {
+        $this->written = true;
+    }
+
+    private function assertMutable(): void
+    {
+        if ($this->written) {
+            throw new Exception('Sparkline was already written; excelize cannot amend a written sparkline');
+        }
     }
 }

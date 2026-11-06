@@ -40,6 +40,9 @@ class Xlsx extends BaseWriter
     {
         $this->processFlags($flags);
         $this->spreadsheet->flushAll();
+        foreach ($this->spreadsheet->getAllSheets() as $sheet) {
+            $sheet->writeSparklines();
+        }
         $handle = $this->spreadsheet->getHandle();
 
         // Opt-in only. PhpSpreadsheet pre-calculates by default, but doing so

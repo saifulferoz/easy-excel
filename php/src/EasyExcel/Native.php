@@ -260,6 +260,12 @@ final class Native
         self::check(\easy_excel_add_chart($handle, $sheet, $cell, \json_encode($spec, \JSON_THROW_ON_ERROR)));
     }
 
+    /** @param array<string, mixed> $spec type/sparklines/display toggles/colorSeries */
+    public static function addSparklineGroup(int $handle, string $sheet, array $spec): void
+    {
+        self::check(\easy_excel_add_sparkline_group($handle, $sheet, \json_encode($spec, \JSON_THROW_ON_ERROR)));
+    }
+
     public static function saveXlsx(int $handle, string $path, string $password = ''): void
     {
         self::check(\easy_excel_save_xlsx($handle, $path, $password));

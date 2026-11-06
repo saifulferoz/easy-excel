@@ -102,6 +102,8 @@ func (w *Workbook) applyOpPhase44(sheet string, op pendingOp) error {
 		return w.f.AutoFilter(sheet, op.ref, opts)
 	case opPageBreak, opSelection:
 		return w.applyOpPhase53(sheet, op)
+	case opSparkline:
+		return w.applyOpSparkline(sheet, op)
 	}
 	return fmt.Errorf("easy-excel: unknown pending op %d", op.kind)
 }

@@ -63,6 +63,7 @@ const (
 	opDefaultColWidth
 	opPageBreak
 	opSelection
+	opSparkline
 )
 
 type pendingOp struct {

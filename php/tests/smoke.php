@@ -409,6 +409,31 @@ check($r11->getActiveSheet()->getCell('B2')->getValue() === 2.0, 'extension-less
 $r11->disconnectWorksheets();
 @\unlink($noExt);
 
+// --- sparklines (PhpSpreadsheet 5.10) ---------------------------------------------
+$s12 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+$ws12 = $s12->getActiveSheet();
+$ws12->fromArray([['q1', 'q2', 'q3'], [3, 5, 2], [-1, 4, 6]]);
+$group12 = $ws12->addSparkline(
+    new \PhpOffice\PhpSpreadsheet\Worksheet\Sparkline\Sparkline('D2', 'Worksheet!A2:C2'),
+    \PhpOffice\PhpSpreadsheet\Worksheet\Sparkline\SparklineType::Column,
+);
+$group12->createSparkline('D3', 'Worksheet!A3:C3')->setDisplayNegative(true)->setColorSeries('FF00B050');
+$w12 = \sys_get_temp_dir() . '/smoke-sparklines.xlsx';
+\PhpOffice\PhpSpreadsheet\IOFactory::createWriter($s12, 'Xlsx')->save($w12);
+$s12->disconnectWorksheets();
+
+$zip12 = new \ZipArchive();
+$zip12->open($w12);
+$sheet12 = (string) $zip12->getFromName('xl/worksheets/sheet1.xml');
+$zip12->close();
+check(\str_contains($sheet12, '<x14:sparklineGroup ') && \str_contains($sheet12, 'type="column"')
+    && \str_contains($sheet12, '<xm:sqref>D3</xm:sqref>') && \str_contains($sheet12, 'FF00B050'),
+    'sparkline group written to the worksheet extLst');
+$r12 = \PhpOffice\PhpSpreadsheet\IOFactory::load($w12);
+check($r12->getActiveSheet()->getCell('C3')->getValue() === 6.0, 'sparkline workbook loads back with data intact');
+$r12->disconnectWorksheets();
+@\unlink($w12);
+
 // --- csv + load control surface ------------------------------------------------
 $s2 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
 $s2->getActiveSheet()->fromArray([['a', '-x', 'b,c']]);

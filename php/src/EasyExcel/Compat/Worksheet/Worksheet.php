@@ -16,6 +16,9 @@ use EasyExcel\Compat\Shared\Date;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Style\Color;
 use EasyExcel\Compat\Style\Style;
+use EasyExcel\Compat\Worksheet\Sparkline\Sparkline;
+use EasyExcel\Compat\Worksheet\Sparkline\SparklineGroup;
+use EasyExcel\Compat\Worksheet\Sparkline\SparklineType;
 use EasyExcel\Native;
 
 /**
@@ -818,6 +821,66 @@ class Worksheet
         );
 
         return $this;
+    }
+
+    /** @var \ArrayObject<int, SparklineGroup>|null */
+    private ?\ArrayObject $sparklineGroups = null;
+
+    /** @return \ArrayObject<int, SparklineGroup> */
+    public function getSparklineGroupCollection(): \ArrayObject
+    {
+        return $this->sparklineGroups ??= new \ArrayObject();
+    }
+
+    public function addSparklineGroup(SparklineGroup $sparklineGroup): static
+    {
+        $this->getSparklineGroupCollection()->append($sparklineGroup);
+
+        return $this;
+    }
+
+    /** Wraps one sparkline in its own default-formatted group and returns the group. */
+    public function addSparkline(Sparkline $sparkline, SparklineType $type = SparklineType::Line): SparklineGroup
+    {
+        $group = (new SparklineGroup())->setType($type)->addSparkline($sparkline);
+        $this->addSparklineGroup($group);
+
+        return $group;
+    }
+
+    /**
+     * Groups already written by a save cannot be taken back out of the file
+     * (excelize has no sparkline removal), so clearing them throws instead of
+     * pretending to succeed.
+     */
+    public function removeSparklineGroupCollection(): static
+    {
+        foreach ($this->getSparklineGroupCollection() as $group) {
+            if ($group->isWritten()) {
+                throw new Exception('Sparkline groups already written by a save cannot be removed');
+            }
+        }
+        $this->sparklineGroups = new \ArrayObject();
+
+        return $this;
+    }
+
+    /**
+     * @internal send groups not yet written to the extension (Writer\Xlsx save).
+     * Empty groups are skipped, as PhpSpreadsheet writes nothing for them.
+     */
+    public function writeSparklines(): void
+    {
+        if ($this->sparklineGroups === null) {
+            return;
+        }
+        foreach ($this->sparklineGroups as $group) {
+            if ($group->isWritten() || $group->getSparklines() === []) {
+                continue;
+            }
+            Native::addSparklineGroup($this->workbookHandle(), $this->title, $group->toSpec());
+            $group->markWritten();
+        }
     }
 
     // --- internals -----------------------------------------------------------------

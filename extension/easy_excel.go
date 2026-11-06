@@ -524,6 +524,15 @@ func easy_excel_add_chart(handle int64, sheet *C.zend_string, cell *C.zend_strin
 	return errOnly(wb.AddChart(goStr(sheet), goStr(cell), goStr(chartJson)))
 }
 
+//export_php:function easy_excel_add_sparkline_group(int $handle, string $sheet, string $groupJson): ?string
+func easy_excel_add_sparkline_group(handle int64, sheet *C.zend_string, groupJson *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return errOnly(err)
+	}
+	return errOnly(wb.AddSparklineGroup(goStr(sheet), goStr(groupJson)))
+}
+
 // --- save -------------------------------------------------------------------------
 
 //export_php:function easy_excel_save_xlsx(int $handle, string $path, string $password): ?string

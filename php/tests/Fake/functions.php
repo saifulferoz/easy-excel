@@ -458,6 +458,22 @@ function easy_excel_protect_sheet(int $handle, string $sheet, string $protection
     return null;
 }
 
+function easy_excel_add_sparkline_group(int $handle, string $sheet, string $groupJson): ?string
+{
+    $spec = \json_decode($groupJson, true);
+    if (!\is_array($spec)) {
+        return 'fake: sparkline spec is not valid JSON';
+    }
+    EasyExcelFake::$log[] = ['add_sparkline_group', [$handle, $sheet, $spec]];
+
+    // Mirrors the Go guard (compat.TranslateSparklineGroup).
+    if (!\in_array($spec['type'] ?? '', ['line', 'column', 'stacked'], true)) {
+        return "easy-excel: unsupported sparkline type {$spec['type']}";
+    }
+
+    return null;
+}
+
 function easy_excel_add_chart(int $handle, string $sheet, string $cell, string $chartJson): ?string
 {
     $spec = \json_decode($chartJson, true);

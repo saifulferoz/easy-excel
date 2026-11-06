@@ -189,6 +189,13 @@ easy_excel_add_chart(int $handle, string $sheet, string $cell, string $chartJson
 //  "legend":{"position":"bottom"},"width":600,"height":300}
 // types: area, bar, barStacked, col, colStacked, doughnut, line, pie,
 //        radar, scatter
+
+easy_excel_add_sparkline_group(int $handle, string $sheet, string $groupJson): ?string
+// {"type":"column",
+//  "sparklines":[{"location":"G2","dataRange":"Sheet1!B2:F2"}],
+//  "markers":false,"high":true,"low":false,"first":false,"last":false,
+//  "negative":false,"xAxis":false,"rightToLeft":false,"colorSeries":"FF376092"}
+// types (OOXML values): line, column, stacked (win/loss); applied at save
 ```
 
 ## Saving

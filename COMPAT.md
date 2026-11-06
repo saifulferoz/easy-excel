@@ -126,6 +126,12 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
 | Pre-calculated results | `Writer\Xlsx::setPreCalculateFormulas(bool)`, `DISABLE_PRECALCULATE_FORMULAE` save flag | **opt-in**: the getter reports upstream's `true` default, but the pass runs only on an explicit call, so inheriting the default never costs streaming. Numeric results only; the `t="str"` excelize forces on formula cells is corrected by a container patch so number formats still apply — see divergence 24 |
 | Recalculate-on-open | `Native::setFullCalcOnLoad(int $handle, bool)` (easy-excel extra, default **on**) | sets `calcPr/@fullCalcOnLoad`; costs one attribute and never degrades. Fixes spreadsheet applications; does nothing for readers that never calculate, which is what the cache above is for |
 
+## Supported (PhpSpreadsheet 5.10 — sparklines & pivot tables)
+
+| Area | API | Notes |
+|---|---|---|
+| Sparklines | `Worksheet\Sparkline\SparklineType`, `Sparkline`, `SparklineGroup` (all getters/setters, `EMPTY_AS_*`/`AXIS_*`), `Worksheet::addSparkline/addSparklineGroup/getSparklineGroupCollection/removeSparklineGroupCollection` | `excelize.AddSparkline`, sent by `Writer\Xlsx::save()` rather than on add, because upstream returns the group for further formatting. Written groups are frozen and cannot be removed (divergence 32) |
+
 ## Documented divergences
 
 1. **`toArray(formatData: false)` types** — values come back from excelize as
@@ -291,6 +297,16 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     with the OOXML default grid (64px per column, 20px per row), so the chart
     lands in the right place at close to the right size, not byte-identically.
 
+32. **Sparkline groups render what excelize models, and freeze once written** —
+    type, the display toggles (markers, high, low, first, last, negative,
+    x-axis), right-to-left and the series colour reach the file. Line weight,
+    hidden-cell and empty-cell modes, axis min/max scaling and the
+    negative/axis/marker/point colours are stored and round-trip through the
+    getters, but the file carries excelize's preset values — which equal
+    PhpSpreadsheet's defaults, so only customised values differ. excelize
+    cannot amend or remove a written group, so after the first save a group,
+    its sparklines and `removeSparklineGroupCollection()` throw instead of
+    silently missing the next save; groups added later are still written.
 
 ## Aliasing modes
 
