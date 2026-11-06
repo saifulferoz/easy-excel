@@ -19,8 +19,13 @@ These are structural mismatches with a Go/excelize engine, not backlog items.
 exports native and route one report to upstream.
 
 - **Custom OOXML writer parts** — `Writer\Xlsx\WriterPart`,
-  `Writer\Xlsx\Worksheet`, `Shared\XMLWriter`. excelize owns serialisation
-  end to end; there is no part registry to hook (COMPAT.md §1)
+  `Writer\Xlsx\Worksheet`, `Shared\XMLWriter`, and PhpSpreadsheet 5.10's
+  `Writer\Xlsx\PivotTable` part builders. excelize owns serialisation end to
+  end; there is no part registry to hook. Pivot tables themselves are
+  supported (COMPAT.md §1)
+- **`Shared\Xlsx\AgileEncryption`** — a standalone pure-PHP crypto helper;
+  encrypted workbooks already go through excelize via the writer/reader
+  `setPassword()` extras (COMPAT.md §5)
 - **Subclassing `Spreadsheet` / `Worksheet`** — Compat objects are handle
   facades over Go state, with no PHP object graph to extend (COMPAT.md §2)
 - **Chart image rendering** — `Chart\Renderer\*` (incl. `JpGraph`). Charts
@@ -33,7 +38,8 @@ exports native and route one report to upstream.
   renderer, not a port, so overriding its protected internals does not
   compose. The public writer API is supported; wave 5.1 showed the audited
   apps never needed the inheritance at all
-- Readers/writers for Ods, Xls, Slk, Gnumeric
+- Readers/writers for Ods, Xls, Slk, Gnumeric, including their writer parts
+  (e.g. 5.10's `Writer\Ods\Drawing`)
 - **`getCellCollection()`** — cell data lives in Go, not in a PHP collection
 
 ## Open gaps (no observed consumer yet)

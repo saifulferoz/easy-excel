@@ -409,6 +409,13 @@ exclusive.
 `Shared\XMLWriter` exists only to serve this pattern; nothing else in the
 audited apps uses it.
 
+`Writer\Xlsx\PivotTable` (PhpSpreadsheet 5.10) belongs here too: its static
+`writeDefinition()` / `writeCacheDefinition()` / `writeCacheRecords()` /
+`write*Relationships()` return the OOXML strings upstream's writer splices
+into the package. Pivot tables themselves are supported — `PivotTableBuilder`
+output is written by `excelize.AddPivotTable` — so only direct callers of the
+part builders are affected.
+
 **Instead:** keep the affected export on upstream via `fallback`. Anything
 expressible through the supported API (styles, charts, validations,
 conditional formats) needs no custom part.
@@ -456,10 +463,26 @@ it is unreachable.
 `getConditionalStyles()` returns the rules on a range — enough to resolve
 matches manually where an app needs the merged result.
 
+### 5. `Shared\Xlsx\AgileEncryption`
+
+PhpSpreadsheet 5.10's standalone ECMA-376 agile-encryption helper: `parse()`,
+`encrypt()`/`decrypt()` and their `*File()` variants, and
+`writeContainerFromFile()`, which builds the OLE compound file by hand. It
+exists so upstream's own reader and writer can open and produce encrypted
+packages. easy-excel already does both natively — `Writer\Xlsx::setPassword()`
+and `Reader\Xlsx::setPassword()` encrypt and decrypt through excelize — so the
+helper would be a second, pure-PHP crypto implementation beside the engine's
+rather than a bridge to it.
+
+**Instead:** use the writer/reader `setPassword()` extras for encrypted
+workbooks; for raw container work, `fallback` defers this one class to
+upstream.
+
 ### Formats
 
 Readers/Writers: Ods, Xls, Slk, Gnumeric — not planned for the native
-engine. In `strict` mode these throw `UnsupportedApiException`; use
+engine. That includes their writer parts, such as PhpSpreadsheet 5.10's
+`Writer\Ods\Drawing` (Ods image frames written through `Shared\XMLWriter`). In `strict` mode these throw `UnsupportedApiException`; use
 `fallback`/`off` with a real `phpoffice/phpspreadsheet` install, or convert
 externally.
 
