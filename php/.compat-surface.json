@@ -394,7 +394,6 @@
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\Pane",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\PivotTable\\PivotCacheDefinition",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\PivotTable\\PivotField",
-    "PhpOffice\\PhpSpreadsheet\\Worksheet\\PivotTable\\PivotFieldGroup",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\PivotTable\\PivotTable",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\PivotTable\\PivotTableBuilder",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\ProtectedRange",

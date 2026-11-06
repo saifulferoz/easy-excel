@@ -307,6 +307,11 @@ clear "not yet supported" exception. Phase numbers refer to PLAN.md §13.
     cannot amend or remove a written group, so after the first save a group,
     its sparklines and `removeSparklineGroupCollection()` throw instead of
     silently missing the next save; groups added later are still written.
+33. **Pivot field grouping is not written** — excelize's pivot tables have no
+    numeric-range or date grouping. `PivotFieldGroup` and the builder's
+    `groupFieldBy*()` calls are accepted and round-trip through the cache
+    definition's getters, but the saved pivot table lists the ungrouped
+    values.
 
 ## Aliasing modes
 
