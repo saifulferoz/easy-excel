@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use EasyExcel\Compat\Worksheet\PivotTable\PivotCacheDefinition;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotField;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotFieldGroup;
 
@@ -89,5 +90,45 @@ return [
                 PivotField::SUBTOTAL_VAR, PivotField::SUBTOTAL_VAR_P,
             ],
         );
+    },
+
+    // --------------------------------------------------- PivotCacheDefinition
+
+    'pivot: PivotCacheDefinition starts empty' => function (): void {
+        $c = new PivotCacheDefinition();
+        T::same(null, $c->getCacheId());
+        T::same(null, $c->getSourceWorksheet());
+        T::same(null, $c->getSourceRange());
+        T::same([], $c->getCacheFields());
+        T::same(null, $c->getCacheFieldName(0));
+        T::same([], $c->getSharedItems('Region'), 'unknown field has no items');
+        T::same(null, $c->getFieldGroup('Region'));
+        T::same(4, (new PivotCacheDefinition(4))->getCacheId());
+    },
+
+    'pivot: PivotCacheDefinition source and fields round-trip' => function (): void {
+        $c = (new PivotCacheDefinition())->setCacheId(1)->setSourceWorksheet('Data')->setSourceRange('A1:C9')
+            ->addCacheField('Region')->addCacheField('Month');
+        T::same(1, $c->getCacheId());
+        T::same('Data', $c->getSourceWorksheet());
+        T::same('A1:C9', $c->getSourceRange());
+        T::same(['Region', 'Month'], $c->getCacheFields());
+        T::same('Month', $c->getCacheFieldName(1), 'index is declaration order');
+
+        $c->setCacheFields([2 => 'A', 9 => 'B']);
+        T::same(['A', 'B'], $c->getCacheFields(), 'reindexed');
+        $c->setSourceRange(null)->setCacheId(null);
+        T::same(null, $c->getSourceRange());
+    },
+
+    'pivot: PivotCacheDefinition shared items and groups are per field' => function (): void {
+        $group = PivotFieldGroup::numeric(10.0);
+        $c = (new PivotCacheDefinition())
+            ->setSharedItems('Region', [4 => 'East', 8 => 'West'])
+            ->setFieldGroup('Amount', $group);
+        T::same(['East', 'West'], $c->getSharedItems('Region'), 'reindexed');
+        T::same([], $c->getSharedItems('Amount'));
+        T::ok($c->getFieldGroup('Amount') === $group, 'same group instance');
+        T::same(null, $c->getFieldGroup('Region'));
     },
 ];

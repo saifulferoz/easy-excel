@@ -392,7 +392,6 @@
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\Iterator",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\PageBreak",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\Pane",
-    "PhpOffice\\PhpSpreadsheet\\Worksheet\\PivotTable\\PivotCacheDefinition",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\PivotTable\\PivotTable",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\PivotTable\\PivotTableBuilder",
     "PhpOffice\\PhpSpreadsheet\\Worksheet\\ProtectedRange",
