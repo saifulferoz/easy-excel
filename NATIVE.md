@@ -196,6 +196,14 @@ easy_excel_add_sparkline_group(int $handle, string $sheet, string $groupJson): ?
 //  "markers":false,"high":true,"low":false,"first":false,"last":false,
 //  "negative":false,"xAxis":false,"rightToLeft":false,"colorSeries":"FF376092"}
 // types (OOXML values): line, column, stacked (win/loss); applied at save
+
+easy_excel_set_pivot_tables(int $handle, string $sheet, string $pivotTablesJson): ?string
+// [{"name":"Sales","sourceSheet":"Data","sourceRange":"A1:C100","location":"A3",
+//   "rows":[{"field":"Region"}],"columns":[{"field":"Product"}],"filters":[],
+//   "data":[{"field":"Amount","subtotal":"sum","caption":"Sum of Amount"}]}]
+// replaces the sheet's generated pivot tables (an unchanged list is a no-op,
+// [] removes them); subtotals: average count countNums max min product
+// stdDev stdDevp sum var varp; a one-cell location widens to 2x2
 ```
 
 ## Saving

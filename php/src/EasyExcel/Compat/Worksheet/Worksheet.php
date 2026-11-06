@@ -16,6 +16,7 @@ use EasyExcel\Compat\Shared\Date;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Style\Color;
 use EasyExcel\Compat\Style\Style;
+use EasyExcel\Compat\Worksheet\PivotTable\PivotField;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotTable;
 use EasyExcel\Compat\Worksheet\Sparkline\Sparkline;
 use EasyExcel\Compat\Worksheet\Sparkline\SparklineGroup;
@@ -936,6 +937,61 @@ class Worksheet
         $this->pivotTables = new \ArrayObject();
 
         return $this;
+    }
+
+    /** True once a save wrote generated pivot tables here (they must be replaced, not appended). */
+    private bool $pivotTablesWritten = false;
+
+    /**
+     * @internal send the generated pivot tables to the extension (Writer\Xlsx
+     * save). PhpSpreadsheet regenerates them on every save, so the whole set
+     * is sent and replaces what an earlier save wrote; a sheet that never had
+     * any skips the call. Loaded (non-generated) pivot tables are left alone.
+     */
+    public function writePivotTables(): void
+    {
+        $specs = [];
+        foreach ($this->getPivotTableCollection() as $pivotTable) {
+            if ($pivotTable->isGenerated()) {
+                $specs[] = self::pivotTableSpec($pivotTable);
+            }
+        }
+        if ($specs === [] && !$this->pivotTablesWritten) {
+            return;
+        }
+        Native::setPivotTables($this->workbookHandle(), $this->title, $specs);
+        $this->pivotTablesWritten = $specs !== [];
+    }
+
+    /** @return array<string, mixed> the extension's pivot spec (extension/compat/pivot.go) */
+    private static function pivotTableSpec(PivotTable $pivotTable): array
+    {
+        $cache = $pivotTable->getCacheDefinition();
+        if ($cache === null || $cache->getSourceWorksheet() === null || $cache->getSourceRange() === null) {
+            throw new Exception("Pivot table '{$pivotTable->getName()}' has no source cache definition");
+        }
+        $axis = static fn (array $fields): array => \array_map(
+            static fn (PivotField $f): array => ['field' => $f->getName()],
+            $fields,
+        );
+
+        return [
+            'name' => $pivotTable->getName(),
+            'sourceSheet' => $cache->getSourceWorksheet(),
+            'sourceRange' => $cache->getSourceRange(),
+            'location' => $pivotTable->getLocation(),
+            'rows' => $axis($pivotTable->getRowFields()),
+            'columns' => $axis($pivotTable->getColumnFields()),
+            'filters' => $axis($pivotTable->getPageFields()),
+            'data' => \array_map(
+                static fn (PivotField $f): array => [
+                    'field' => $f->getName(),
+                    'subtotal' => $f->getSubtotal() ?? PivotField::SUBTOTAL_SUM,
+                    'caption' => $f->getDataFieldCaption() ?? '',
+                ],
+                $pivotTable->getDataFields(),
+            ),
+        ];
     }
 
     // --- internals -----------------------------------------------------------------

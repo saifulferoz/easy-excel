@@ -64,6 +64,7 @@ const (
 	opPageBreak
 	opSelection
 	opSparkline
+	opPivotTables
 )
 
 type pendingOp struct {

@@ -434,6 +434,37 @@ check($r12->getActiveSheet()->getCell('C3')->getValue() === 6.0, 'sparkline work
 $r12->disconnectWorksheets();
 @\unlink($w12);
 
+// --- pivot tables (PhpSpreadsheet 5.10) ------------------------------------------
+$s13 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+$data13 = $s13->getActiveSheet()->setTitle('Data');
+$data13->fromArray([['Region', 'Product', 'Amount'], ['East', 'Pens', 10], ['West', 'Pens', 20], ['East', 'Ink', 5]]);
+$report13 = $s13->createSheet()->setTitle('Report');
+(new \PhpOffice\PhpSpreadsheet\Worksheet\PivotTable\PivotTableBuilder($data13, 'A1:C4'))
+    ->addRowField('Region')
+    ->addColumnField('Product')
+    ->addDataField('Amount', \PhpOffice\PhpSpreadsheet\Worksheet\PivotTable\PivotField::SUBTOTAL_SUM)
+    ->build($report13, 'A3', 'Sales');
+$w13 = \sys_get_temp_dir() . '/smoke-pivot.xlsx';
+$writer13 = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($s13, 'Xlsx');
+$writer13->save($w13);
+$writer13->save($w13); // a re-save replaces the table instead of duplicating it
+$s13->disconnectWorksheets();
+
+$zip13 = new \ZipArchive();
+$zip13->open($w13);
+$pivotXml13 = (string) $zip13->getFromName('xl/pivotTables/pivotTable1.xml');
+$hasSecond13 = $zip13->locateName('xl/pivotTables/pivotTable2.xml') !== false;
+$cacheXml13 = (string) $zip13->getFromName('xl/pivotCache/pivotCacheDefinition1.xml');
+$zip13->close();
+check(\str_contains($pivotXml13, 'name="Sales"') && \str_contains($pivotXml13, 'name="Sum of Amount"')
+    && \str_contains($cacheXml13, 'refreshOnLoad="true"') && \str_contains($cacheXml13, 'sheet="Data"'),
+    'pivot table and refresh-on-load cache written');
+check(!$hasSecond13, 're-save replaced the pivot table rather than adding a second');
+$r13 = \PhpOffice\PhpSpreadsheet\IOFactory::load($w13);
+check($r13->getSheetByName('Data')->getCell('C3')->getValue() === 20.0, 'pivot workbook loads back with data intact');
+$r13->disconnectWorksheets();
+@\unlink($w13);
+
 // --- csv + load control surface ------------------------------------------------
 $s2 = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
 $s2->getActiveSheet()->fromArray([['a', '-x', 'b,c']]);

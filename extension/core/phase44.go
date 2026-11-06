@@ -104,6 +104,8 @@ func (w *Workbook) applyOpPhase44(sheet string, op pendingOp) error {
 		return w.applyOpPhase53(sheet, op)
 	case opSparkline:
 		return w.applyOpSparkline(sheet, op)
+	case opPivotTables:
+		return w.applyOpPivotTables(sheet, op)
 	}
 	return fmt.Errorf("easy-excel: unknown pending op %d", op.kind)
 }

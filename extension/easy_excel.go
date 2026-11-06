@@ -533,6 +533,15 @@ func easy_excel_add_sparkline_group(handle int64, sheet *C.zend_string, groupJso
 	return errOnly(wb.AddSparklineGroup(goStr(sheet), goStr(groupJson)))
 }
 
+//export_php:function easy_excel_set_pivot_tables(int $handle, string $sheet, string $pivotTablesJson): ?string
+func easy_excel_set_pivot_tables(handle int64, sheet *C.zend_string, pivotTablesJson *C.zend_string) unsafe.Pointer {
+	wb, err := workbook(handle)
+	if err != nil {
+		return errOnly(err)
+	}
+	return errOnly(wb.SetPivotTables(goStr(sheet), goStr(pivotTablesJson)))
+}
+
 // --- save -------------------------------------------------------------------------
 
 //export_php:function easy_excel_save_xlsx(int $handle, string $path, string $password): ?string

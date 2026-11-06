@@ -4,9 +4,39 @@ declare(strict_types=1);
 
 use EasyExcel\Compat\Worksheet\PivotTable\PivotCacheDefinition;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotField;
+use EasyExcel\Compat\Exception;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotFieldGroup;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotTable;
+use EasyExcel\Compat\Worksheet\PivotTable\PivotTableBuilder;
+use EasyExcel\Compat\Writer\Xlsx;
+
+/** A Data sheet with a header row and four sales rows, plus an empty Report sheet. */
+function pivotSalesWorkbook(): Spreadsheet
+{
+    $s = new Spreadsheet();
+    $data = $s->getActiveSheet()->setTitle('Data');
+    $data->fromArray([
+        ['Region', 'Product', 'Amount'],
+        ['East', 'Pens', 10],
+        ['West', 'Pens', 20],
+        ['East', 'Ink', 5],
+        ['', 'Ink', 7],
+    ]);
+    $s->createSheet()->setTitle('Report');
+
+    return $s;
+}
+
+function pivotSave(Spreadsheet $s): void
+{
+    $path = \tempnam(\sys_get_temp_dir(), 'pivot') . '.xlsx';
+    try {
+        (new Xlsx($s))->save($path);
+    } finally {
+        @\unlink($path);
+    }
+}
 
 return [
     // -------------------------------------------------------- PivotFieldGroup
@@ -187,5 +217,131 @@ return [
         T::same(null, $ws->getPivotTableByName('Nope'));
         $ws->removePivotTableCollection();
         T::same([], $ws->getPivotTableNames());
+    },
+
+    // ------------------------------------------------------ PivotTableBuilder
+
+    'pivot: builder reads field names from the header row' => function (): void {
+        $s = pivotSalesWorkbook();
+        $b = new PivotTableBuilder($s->getSheetByName('Data'), '$A$1:$C$5');
+        $t = $b->addRowField('Region')->addDataField('Amount')->build($s->getSheetByName('Report'), '$B$3');
+        T::same(['Region', 'Product', 'Amount'], $t->getCacheDefinition()->getCacheFields());
+        T::same('A1:C5', $t->getCacheDefinition()->getSourceRange(), '$ markers stripped');
+        T::same('Data', $t->getCacheDefinition()->getSourceWorksheet());
+        T::same(1, $t->getCacheDefinition()->getCacheId());
+        T::same('B3:B3', $t->getLocation(), 'degenerate one-cell location, like upstream');
+        T::same('PivotTable1', $t->getName(), 'default name');
+        T::ok($t->isGenerated(), 'built tables are generated');
+    },
+
+    'pivot: builder places fields and derives captions' => function (): void {
+        $s = pivotSalesWorkbook();
+        $t = (new PivotTableBuilder($s->getSheetByName('Data'), 'A1:C5'))
+            ->addRowField('Region')
+            ->addColumnField('Product')
+            ->addDataField('Amount', PivotField::SUBTOTAL_COUNT_NUMS)
+            ->build($s->getSheetByName('Report'), 'A3', 'Sales');
+        T::same('Sales', $t->getName());
+        T::same('Region', $t->getRowFields()[0]->getName());
+        T::same('Product', $t->getColumnFields()[0]->getName());
+        $amount = $t->getDataFields()[0];
+        T::same(2, $amount->getIndex(), 'fields keep source-column order');
+        T::same('countNums', $amount->getSubtotal());
+        T::same('Count of Amount', $amount->getDataFieldCaption(), 'countNums is captioned Count, like upstream');
+        T::same(PivotField::AXIS_NONE, $amount->getAxis(), 'value fields carry no axis');
+        T::same(3, \count($t->getFields()));
+
+        $custom = (new PivotTableBuilder($s->getSheetByName('Data'), 'A1:C5'))
+            ->addDataField('Amount', PivotField::SUBTOTAL_MAX, 'Biggest')
+            ->build($s->getSheetByName('Report'), 'H3', 'Max');
+        T::same('Biggest', $custom->getDataFields()[0]->getDataFieldCaption());
+    },
+
+    'pivot: builder records distinct values and groups on the cache' => function (): void {
+        $s = pivotSalesWorkbook();
+        $t = (new PivotTableBuilder($s->getSheetByName('Data'), 'A1:C5'))
+            ->addRowField('Region')
+            ->groupFieldByNumericRange('Amount', 10.0, 0.0)
+            ->addDataField('Amount')
+            ->build($s->getSheetByName('Report'), 'A3');
+        $cache = $t->getCacheDefinition();
+        T::same(['East', 'West'], $cache->getSharedItems('Region'), 'first-seen order, blanks skipped');
+        T::same(['10', '20', '5', '7'], $cache->getSharedItems('Amount'), 'values are strings');
+        T::same(10.0, $cache->getFieldGroup('Amount')->getInterval());
+        T::same(null, $cache->getFieldGroup('Region'));
+    },
+
+    'pivot: builder registers the table on the target sheet' => function (): void {
+        $s = pivotSalesWorkbook();
+        $report = $s->getSheetByName('Report');
+        $t = (new PivotTableBuilder($s->getSheetByName('Data'), 'A1:C5'))->addDataField('Amount')->build($report, 'A3');
+        T::ok($report->getPivotTableByName('PivotTable1') === $t, 'registered');
+        T::ok($t->getWorksheet() === $report, 'bound to the target');
+        T::same([], $s->getSheetByName('Data')->getPivotTableNames(), 'not on the source sheet');
+    },
+
+    'pivot: builder rejects unknown fields and a missing data field' => function (): void {
+        $s = pivotSalesWorkbook();
+        $b = new PivotTableBuilder($s->getSheetByName('Data'), 'A1:C5');
+        T::throws(Exception::class, fn () => $b->addRowField('Nope'), 'unknown row field');
+        T::throws(Exception::class, fn () => $b->groupFieldByDate('Nope', PivotFieldGroup::GROUP_BY_YEARS), 'unknown group field');
+        $b->addRowField('Region');
+        T::throws(Exception::class, fn () => $b->build($s->getSheetByName('Report'), 'A3'), 'no data field');
+    },
+
+    // ------------------------------------------------- writing generated pivots
+
+    'pivot: nothing is sent until save, then the spec reaches the extension' => function (): void {
+        $s = pivotSalesWorkbook();
+        (new PivotTableBuilder($s->getSheetByName('Data'), 'A1:C5'))
+            ->addRowField('Region')->addColumnField('Product')->addPageField('Amount')
+            ->addDataField('Amount', PivotField::SUBTOTAL_AVERAGE)
+            ->build($s->getSheetByName('Report'), 'A3', 'Sales');
+        T::same([], EasyExcelFake::calls('set_pivot_tables'), 'build alone sends nothing');
+
+        pivotSave($s);
+        $calls = EasyExcelFake::calls('set_pivot_tables');
+        T::same(1, \count($calls), 'only the sheet with pivots is synced');
+        T::same('Report', $calls[0][1][1]);
+        T::same([[
+            'name' => 'Sales',
+            'sourceSheet' => 'Data',
+            'sourceRange' => 'A1:C5',
+            'location' => 'A3:A3',
+            'rows' => [['field' => 'Region']],
+            'columns' => [['field' => 'Product']],
+            'filters' => [],
+            'data' => [['field' => 'Amount', 'subtotal' => 'average', 'caption' => 'Average of Amount']],
+        ]], $calls[0][1][2], 'placing Amount as a value overrides its page placement, like upstream');
+    },
+
+    'pivot: every save resends the full set, and clearing it sends an empty list' => function (): void {
+        $s = pivotSalesWorkbook();
+        $report = $s->getSheetByName('Report');
+        (new PivotTableBuilder($s->getSheetByName('Data'), 'A1:C5'))->addDataField('Amount')->build($report, 'A3', 'A');
+        pivotSave($s);
+        $report->getPivotTableByName('A')->setName('Renamed');
+        pivotSave($s);
+        $report->removePivotTableCollection();
+        pivotSave($s);
+        pivotSave($s);
+
+        $calls = EasyExcelFake::calls('set_pivot_tables');
+        T::same(3, \count($calls), 'two saves with tables, one clearing call, then nothing');
+        T::same('Renamed', $calls[1][1][2][0]['name'], 'later edits reach the next save');
+        T::same([], $calls[2][1][2], 'clearing replaces the written set with nothing');
+    },
+
+    'pivot: loaded (non-generated) tables are not sent' => function (): void {
+        $s = pivotSalesWorkbook();
+        $s->getSheetByName('Report')->addPivotTable(new PivotTable('FromFile'));
+        pivotSave($s);
+        T::same([], EasyExcelFake::calls('set_pivot_tables'));
+    },
+
+    'pivot: a generated table without a cache definition fails the save' => function (): void {
+        $s = pivotSalesWorkbook();
+        $s->getSheetByName('Report')->addPivotTable((new PivotTable('Broken'))->setGenerated(true));
+        T::throws(Exception::class, fn () => pivotSave($s));
     },
 ];

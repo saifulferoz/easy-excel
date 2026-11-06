@@ -474,6 +474,17 @@ function easy_excel_add_sparkline_group(int $handle, string $sheet, string $grou
     return null;
 }
 
+function easy_excel_set_pivot_tables(int $handle, string $sheet, string $pivotTablesJson): ?string
+{
+    $specs = \json_decode($pivotTablesJson, true);
+    if (!\is_array($specs) || !\array_is_list($specs)) {
+        return 'fake: pivot table list is not a JSON list';
+    }
+    EasyExcelFake::$log[] = ['set_pivot_tables', [$handle, $sheet, $specs]];
+
+    return null;
+}
+
 function easy_excel_add_chart(int $handle, string $sheet, string $cell, string $chartJson): ?string
 {
     $spec = \json_decode($chartJson, true);

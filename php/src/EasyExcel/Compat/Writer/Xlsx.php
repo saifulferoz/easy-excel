@@ -42,6 +42,7 @@ class Xlsx extends BaseWriter
         $this->spreadsheet->flushAll();
         foreach ($this->spreadsheet->getAllSheets() as $sheet) {
             $sheet->writeSparklines();
+            $sheet->writePivotTables();
         }
         $handle = $this->spreadsheet->getHandle();
 

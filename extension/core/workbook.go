@@ -76,8 +76,9 @@ type Workbook struct {
 	mu          sync.Mutex
 	f           *excelize.File
 	sheets      map[string]*sheetState
-	filters     map[string]string // sheet → auto-filter ref injected at save
-	defaultSpec compat.StyleSpec  // workbook default style (getDefaultStyle)
+	filters     map[string]string   // sheet → auto-filter ref injected at save
+	pivots      map[string]pivotSet // sheet → generated pivot tables written there
+	defaultSpec compat.StyleSpec    // workbook default style (getDefaultStyle)
 	gate        *limits.Gate
 	policy      *exio.Policy
 	styles      styleInterner
@@ -161,6 +162,7 @@ func New(env *Env) (*Workbook, error) {
 		f:        f,
 		sheets:   map[string]*sheetState{"Worksheet": {eligible: true, dimsKnown: true}},
 		filters:  map[string]string{},
+		pivots:   map[string]pivotSet{},
 		gate:     env.gate(),
 		policy:   env.policy(),
 		estBytes: baseEstimate,
@@ -203,6 +205,7 @@ func Open(path, password string, env *Env) (*Workbook, error) {
 		f:        f,
 		sheets:   map[string]*sheetState{},
 		filters:  map[string]string{},
+		pivots:   map[string]pivotSet{},
 		gate:     env.gate(),
 		policy:   env.policy(),
 		estBytes: est,
@@ -298,6 +301,7 @@ func (w *Workbook) DeleteSheet(name string) error {
 		return err
 	}
 	delete(w.sheets, name)
+	delete(w.pivots, name)
 	delete(w.filters, name)
 	return nil
 }
@@ -327,6 +331,10 @@ func (w *Workbook) RenameSheet(oldName, newName string) error {
 	if ref, ok := w.filters[oldName]; ok {
 		delete(w.filters, oldName)
 		w.filters[newName] = ref
+	}
+	if set, ok := w.pivots[oldName]; ok {
+		delete(w.pivots, oldName)
+		w.pivots[newName] = set
 	}
 	return nil
 }

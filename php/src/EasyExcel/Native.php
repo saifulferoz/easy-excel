@@ -266,6 +266,12 @@ final class Native
         self::check(\easy_excel_add_sparkline_group($handle, $sheet, \json_encode($spec, \JSON_THROW_ON_ERROR)));
     }
 
+    /** @param list<array<string, mixed>> $specs the sheet's full set of generated pivot tables */
+    public static function setPivotTables(int $handle, string $sheet, array $specs): void
+    {
+        self::check(\easy_excel_set_pivot_tables($handle, $sheet, \json_encode($specs, \JSON_THROW_ON_ERROR)));
+    }
+
     public static function saveXlsx(int $handle, string $path, string $password = ''): void
     {
         self::check(\easy_excel_save_xlsx($handle, $path, $password));
