@@ -16,6 +16,7 @@ use EasyExcel\Compat\Shared\Date;
 use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Style\Color;
 use EasyExcel\Compat\Style\Style;
+use EasyExcel\Compat\Worksheet\PivotTable\PivotTable;
 use EasyExcel\Compat\Worksheet\Sparkline\Sparkline;
 use EasyExcel\Compat\Worksheet\Sparkline\SparklineGroup;
 use EasyExcel\Compat\Worksheet\Sparkline\SparklineType;
@@ -881,6 +882,60 @@ class Worksheet
             Native::addSparklineGroup($this->workbookHandle(), $this->title, $group->toSpec());
             $group->markWritten();
         }
+    }
+
+    /** @var \ArrayObject<int, PivotTable>|null */
+    private ?\ArrayObject $pivotTables = null;
+
+    /** @return \ArrayObject<int, PivotTable> */
+    public function getPivotTableCollection(): \ArrayObject
+    {
+        return $this->pivotTables ??= new \ArrayObject();
+    }
+
+    /** @return \ArrayObject<int, PivotTable> alias of getPivotTableCollection() */
+    public function getPivotTables(): \ArrayObject
+    {
+        return $this->getPivotTableCollection();
+    }
+
+    public function addPivotTable(PivotTable $pivotTable): static
+    {
+        $pivotTable->setWorksheet($this);
+        $this->getPivotTableCollection()->append($pivotTable);
+
+        return $this;
+    }
+
+    /** @return list<string> */
+    public function getPivotTableNames(): array
+    {
+        $names = [];
+        foreach ($this->getPivotTableCollection() as $pivotTable) {
+            $names[] = $pivotTable->getName();
+        }
+
+        return $names;
+    }
+
+    /** Case-insensitive, like PhpSpreadsheet. */
+    public function getPivotTableByName(string $name): ?PivotTable
+    {
+        $name = \mb_strtoupper($name);
+        foreach ($this->getPivotTableCollection() as $pivotTable) {
+            if (\mb_strtoupper($pivotTable->getName()) === $name) {
+                return $pivotTable;
+            }
+        }
+
+        return null;
+    }
+
+    public function removePivotTableCollection(): static
+    {
+        $this->pivotTables = new \ArrayObject();
+
+        return $this;
     }
 
     // --- internals -----------------------------------------------------------------

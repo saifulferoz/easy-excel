@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use EasyExcel\Compat\Worksheet\PivotTable\PivotCacheDefinition;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotField;
+use EasyExcel\Compat\Spreadsheet;
 use EasyExcel\Compat\Worksheet\PivotTable\PivotFieldGroup;
+use EasyExcel\Compat\Worksheet\PivotTable\PivotTable;
 
 return [
     // -------------------------------------------------------- PivotFieldGroup
@@ -130,5 +132,60 @@ return [
         T::same([], $c->getSharedItems('Amount'));
         T::ok($c->getFieldGroup('Amount') === $group, 'same group instance');
         T::same(null, $c->getFieldGroup('Region'));
+    },
+
+    // ------------------------------------------------------------- PivotTable
+
+    'pivot: PivotTable defaults' => function (): void {
+        $t = new PivotTable('Sales');
+        T::same('Sales', $t->getName());
+        T::same('Sales', (string) $t);
+        T::same(false, $t->isGenerated());
+        T::same(null, $t->getWorksheet());
+        T::same('', $t->getLocation());
+        T::same(null, $t->getCacheDefinition());
+        T::same([], $t->getFields());
+        T::same('', (new PivotTable())->getName());
+    },
+
+    'pivot: PivotTable splits fields by axis, in order' => function (): void {
+        $t = (new PivotTable('P'))
+            ->addField((new PivotField(0, 'Region'))->setAxis(PivotField::AXIS_ROW))
+            ->addField((new PivotField(1, 'Product'))->setAxis(PivotField::AXIS_COLUMN))
+            ->addField((new PivotField(2, 'Year'))->setAxis(PivotField::AXIS_PAGE))
+            ->addField((new PivotField(3, 'Amount'))->setDataField(true)->setSubtotal('sum'))
+            ->addField((new PivotField(4, 'Month'))->setAxis(PivotField::AXIS_ROW))
+            ->addField(new PivotField(5, 'Unused'));
+        $names = static fn (array $fields): array => \array_map(static fn (PivotField $f): string => $f->getName(), $fields);
+        T::same(['Region', 'Month'], $names($t->getRowFields()));
+        T::same(['Product'], $names($t->getColumnFields()));
+        T::same(['Year'], $names($t->getPageFields()));
+        T::same(['Amount'], $names($t->getDataFields()));
+        T::same(6, \count($t->getFields()));
+        T::same([0], \array_keys($t->getColumnFields()), 'axis lists are reindexed');
+    },
+
+    'pivot: PivotTable setters round-trip' => function (): void {
+        $cache = new PivotCacheDefinition(1);
+        $t = (new PivotTable())->setName('Q')->setGenerated(true)->setLocation('A3:A3')->setCacheDefinition($cache);
+        T::same('Q', $t->getName());
+        T::same(true, $t->isGenerated());
+        T::same('A3:A3', $t->getLocation());
+        T::ok($t->getCacheDefinition() === $cache, 'same cache');
+    },
+
+    'pivot: Worksheet pivot table collection' => function (): void {
+        $ws = (new Spreadsheet())->getActiveSheet();
+        T::same(0, \count($ws->getPivotTableCollection()));
+        $a = new PivotTable('Sales');
+        T::ok($ws->addPivotTable($a) === $ws, 'fluent');
+        $ws->addPivotTable(new PivotTable('Costs'));
+        T::ok($a->getWorksheet() === $ws, 'addPivotTable binds the worksheet');
+        T::ok($ws->getPivotTables() === $ws->getPivotTableCollection(), 'alias returns the same collection');
+        T::same(['Sales', 'Costs'], $ws->getPivotTableNames());
+        T::ok($ws->getPivotTableByName('sALES') === $a, 'lookup is case-insensitive');
+        T::same(null, $ws->getPivotTableByName('Nope'));
+        $ws->removePivotTableCollection();
+        T::same([], $ws->getPivotTableNames());
     },
 ];
